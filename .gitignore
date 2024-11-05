@@ -145,6 +145,7 @@ python_scripts/lightning_logs/
 python_scripts/Logs
 python_scripts/checkpoints
 
+<<<<<<< HEAD
 datas
 results
 
@@ -158,3 +159,6 @@ picture/
 Logs/
 nv/
 results/
+=======
+datas
+>>>>>>> 1f4a48f (updata)
