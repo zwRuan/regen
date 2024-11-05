@@ -1,5 +1,5 @@
-torch<=2.0.1
-scipy
+#torch<=2.0.1
+# scipy
 seaborn
 notebook
 packaging
@@ -34,5 +34,5 @@ fire
 alpaca-eval==0.3.1
 # for human eval web app
 flask
-vllm
+#vllm
 openpyxl

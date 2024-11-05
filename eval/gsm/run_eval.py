@@ -9,11 +9,19 @@ from eval.utils import (
     load_lm_and_tokenizer,
     load_dexperts_model_and_tokenizer,
     dynamic_import_function,
-    ensure_dir
+    ensure_dir,
+    dexperts_generate_completions
 )
+import debugpy
+try:
+    # 5678 is the default attach port in the VS Code debug configurations. Unless a host and port are specified, host defaults to 127.0.0.1
+    debugpy.listen(("localhost", 16236))
+    print("Waiting for debugger attach")
+    debugpy.wait_for_client()
+except Exception as e:
+    pass
 
-
-exact_match = evaluate.load("exact_match")
+exact_match = evaluate.load("/workspace/rzw/proxy-tuning/evaluate/metrics/exact_match/exact_match.py")
 
 
 def trim_output(output):
@@ -30,7 +38,7 @@ def trim_output(output):
 
 def main(args):
     random.seed(42)
-
+    i = 0
     print("Loading data...")
     test_data = []
     with open(os.path.join(args.data_dir, "test.jsonl")) as fin:
@@ -52,21 +60,35 @@ def main(args):
     ensure_dir(args.save_dir)
 
     prompt_prefix = "Answer the following question.\n\n"
-
     prompts = []
+    if i != 0:
+        pos_prompts = []
+        neg_prompts = []
+        pos_prefix = "Answer the following question."
+        neg_prefix = "Answer the following question."
     chat_formatting_function = dynamic_import_function(args.chat_formatting_function) if args.use_chat_format else None
     for example in test_data:
         prompt = prompt_prefix + "Question: " + example["question"].strip()
+        if i != 0:
+            pos_prompt += pos_prefix + prompt
+            neg_prompt += neg_prefix + prompt
         if args.use_chat_format:
             messages = [{"role": "user", "content": prompt}]
             prompt = chat_formatting_function(messages, add_bos=False)
             if prompt[-1] in ["\n", " "]:
                 prompt += "Answer:"
+                if i != 0:
+                    pos_prompt += "Answer:"
+                    neg_prompt += "Answer:"
             else:
                 prompt += " Answer:"
-        else:
-            prompt += "\nAnswer:"
+                if i != 0:
+                    pos_prompt += " Answer:"
+                    neg_prompt += " Answer:"
         prompts.append(prompt)
+        if i != 0:
+            pos_prompts.append(pos_prompt)
+            neg_prompts.append(neg_prompt)
 
     with open(os.path.join(args.save_dir, "example_prompt.txt"), 'w') as fout:
         fout.write(prompts[0])
@@ -79,24 +101,34 @@ def main(args):
             load_in_8bit=args.load_in_8bit,
             use_fast_tokenizer=not args.use_slow_tokenizer,
         )
-    elif args.base_model_name_or_path:
+    elif args.regen_model_name_or_path:
         model, tokenizer = load_dexperts_model_and_tokenizer(
-            args.base_model_name_or_path,
-            args.expert_model_name_or_path,
+            model_name_or_path=args.regen_model_name_or_path,
             chat_response_prefix="Answer:",
             load_in_8bit=args.load_in_8bit,
             use_fast_tokenizer=not args.use_slow_tokenizer,
         )
-
-    outputs = generate_completions(
-        model=model,
-        tokenizer=tokenizer,
-        prompts=prompts,
-        max_new_tokens=512,
-        batch_size=args.eval_batch_size,
-        do_sample=False,
-    )
-
+    
+    if i == 0:
+        outputs = generate_completions(
+            model=model,
+            tokenizer=tokenizer,
+            prompts=prompts,
+            max_new_tokens=512,
+            batch_size=args.eval_batch_size,
+            do_sample=False,
+        )
+    else:
+        outputs = dexperts_generate_completions(
+            model=model,
+            tokenizer=tokenizer,
+            base_prompts=prompts,
+            pos_prompts=pos_prompts,
+            neg_prompts=neg_prompts,
+            max_new_tokens=512,
+            batch_size=args.eval_batch_size,
+            do_sample=False,
+        )
     outputs = [trim_output(o) for o in outputs]
 
     predictions = []
@@ -179,7 +211,7 @@ if __name__ == "__main__":
         help="load model in 8bit mode, which will reduce memory and speed up inference."
     )
     parser.add_argument(
-        "--base_model_name_or_path",
+        "--regen_model_name_or_path",
         type=str,
         default='meta-llama/Llama-2-13b-hf',
     )
