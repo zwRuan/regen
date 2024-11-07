@@ -19,7 +19,7 @@ class DExpertsLlama:
         model_name_or_path: str,
         tokenizer: PreTrainedTokenizer,
         system_prompt: str = None,
-        alpha: float = 1.0,
+        alpha: float = 0,
         chat_response_prefix: str = None,
         model_kwargs: Dict[str, Any] = None
     ):
@@ -170,14 +170,14 @@ class DExpertsLlama:
             )
 
             # pre-process logits
-            if logits_processor:
-                next_token_logits = logits_processor(input_ids, next_token_logits)
+            # if logits_processor:
+            #     next_token_logits = logits_processor(input_ids, next_token_logits)
 
             # warp logits
             if temperature != 1.0:
                 next_token_logits = next_token_logits / temperature
-            #if top_p < 1.0:
-                #next_token_logits = top_k_top_p_filtering(next_token_logits, top_p=top_p)
+            # if top_p < 1.0:
+            #     next_token_logits = top_k_top_p_filtering(next_token_logits, top_p=top_p)
 
             # decode
             if do_sample:
@@ -229,7 +229,7 @@ class DExpertsLlama:
                     analysis_data[k] = torch.cat(analysis_data[k], dim=1)
             return base_input_ids, analysis_data
 
-        return input_ids
+        return base_input_ids
 
     def _update_model_kwargs_for_generation(
         self,

@@ -227,15 +227,15 @@ def dexperts_generate_completions(
         )
 
         # to support the logits processing below when using DExperts with mixed tokenizers
-        if isinstance(batch_input_ids, dict):
-            batch_input_ids = batch_input_ids['llama']
+        if isinstance(base_batch_input_ids, dict):
+            base_batch_input_ids = base_batch_input_ids['llama']
 
         # the stopping criteria is applied at batch level, so if other examples are not stopped,
         # the entire batch will continue to generate. so some outputs still have the stop sequence,
         # which we need to remove.
         if stop_id_sequences:
             for output_idx in range(batch_outputs.shape[0]):
-                for token_idx in range(batch_input_ids.shape[1], batch_outputs.shape[1]):
+                for token_idx in range(base_batch_input_ids.shape[1], batch_outputs.shape[1]):
                     if any(batch_outputs[output_idx, token_idx: token_idx+len(stop_sequence)].tolist() == stop_sequence for stop_sequence in stop_id_sequences):
                         batch_outputs[output_idx, token_idx:] = tokenizer.pad_token_id
                         break
@@ -246,20 +246,20 @@ def dexperts_generate_completions(
         # directly because some tokenizer (e.g., llama) won't add space token before the first token.
         # space is important for some tasks (e.g., code completion).
         batch_outputs = tokenizer.batch_decode(batch_outputs, skip_special_tokens=True)
-        batch_prompts = tokenizer.batch_decode(batch_input_ids, skip_special_tokens=True)
+        base_batch_prompts = tokenizer.batch_decode(base_batch_input_ids, skip_special_tokens=True)
 
         # duplicate the prompts to match the number of return sequences
-        batch_prompts = [prompt for prompt in batch_prompts for _ in range(num_return_sequences)]
+        base_batch_prompts = [prompt for prompt in base_batch_prompts for _ in range(num_return_sequences)]
         batch_generations = [
-            output[len(prompt):] for prompt, output in zip(batch_prompts, batch_outputs)
+            output[len(prompt):] for prompt, output in zip(base_batch_prompts, batch_outputs)
         ]
 
         generations += batch_generations
 
         if not disable_tqdm:
-            progress.update(len(batch_prompts)//num_return_sequences)
+            progress.update(len(base_batch_prompts)//num_return_sequences)
 
-    assert len(generations) == len(prompts) * num_return_sequences, "number of generations should be equal to number of prompts * num_return_sequences"
+    assert len(generations) == len(base_prompts) * num_return_sequences, "number of generations should be equal to number of prompts * num_return_sequences"
     return generations
 
 

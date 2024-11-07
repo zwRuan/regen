@@ -146,6 +146,9 @@ python_scripts/Logs
 python_scripts/checkpoints
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 761c44d (updata)
 datas
 results
 
@@ -155,6 +158,7 @@ results
 **/*.so
 **/*$py.class
 
+<<<<<<< HEAD
 picture/
 Logs/
 nv/
@@ -162,3 +166,5 @@ results/
 =======
 datas
 >>>>>>> 1f4a48f (updata)
+=======
+>>>>>>> 761c44d (updata)

@@ -38,7 +38,7 @@ def trim_output(output):
 
 def main(args):
     random.seed(42)
-    i = 0
+    prefix_outputs = []
     print("Loading data...")
     test_data = []
     with open(os.path.join(args.data_dir, "test.jsonl")) as fin:
@@ -56,112 +56,132 @@ def main(args):
 
     if args.max_examples and len(test_data) > args.max_examples:
         test_data = random.sample(test_data, args.max_examples)
-
+    test_data = test_data[:40]
     ensure_dir(args.save_dir)
-
-    prompt_prefix = "Answer the following question.\n\n"
-    prompts = []
-    if i != 0:
-        pos_prompts = []
-        neg_prompts = []
-        pos_prefix = "Answer the following question."
-        neg_prefix = "Answer the following question."
-    chat_formatting_function = dynamic_import_function(args.chat_formatting_function) if args.use_chat_format else None
-    for example in test_data:
-        prompt = prompt_prefix + "Question: " + example["question"].strip()
+    for i in range(5):
+        prompt_prefix = "Answer the following question.\n\n"
+        prompts = []
         if i != 0:
-            pos_prompt += pos_prefix + prompt
-            neg_prompt += neg_prefix + prompt
-        if args.use_chat_format:
-            messages = [{"role": "user", "content": prompt}]
-            prompt = chat_formatting_function(messages, add_bos=False)
-            if prompt[-1] in ["\n", " "]:
-                prompt += "Answer:"
-                if i != 0:
-                    pos_prompt += "Answer:"
-                    neg_prompt += "Answer:"
+            pos_prompts = []
+            neg_prompts = []
+            pos_prefix = "You have already provided answers to this question in previous iterations. Here are those answers: \n\n"
+            neg_prefix = "You have already provided answers to this question in previous iterations. Here are those answers: \n\n"
+            pos_prefix_end = "\nNow, based on these previous answers, please provide a new, unique answer to the following question: \n\n"
+            neg_prefix_end = "\nNow, based on these previous answers, please provide a new answer to the following question that is similar to the ones you have already given: \n\n"
+        chat_formatting_function = dynamic_import_function(args.chat_formatting_function) if args.use_chat_format else None
+        for num_example, example in enumerate(test_data):
+            prompt = prompt_prefix + "Question: " + example["question"].strip()
+            if i != 0:
+                pos_prompt = pos_prefix + prefix_outputs[num_example] + pos_prefix_end + "Question: " + example["question"].strip()
+                neg_prompt = neg_prefix + prefix_outputs[num_example] + neg_prefix_end + "Question: " + example["question"].strip()
+            if args.use_chat_format:
+                base_messages = [{"role": "user", "content": prompt}]
+                prompt = chat_formatting_function(base_messages, add_bos=False)
+                pos_messages = [{"role": "user", "content": pos_prompt}]
+                pos_prompt = chat_formatting_function(pos_messages, add_bos=False)
+                neg_messages = [{"role": "user", "content": neg_prompt}]
+                neg_prompt = chat_formatting_function(neg_messages, add_bos=False)
+                if prompt[-1] in ["\n", " "]:
+                    prompt += "Answer:"
+                    if i != 0:
+                        pos_prompt += "Answer:"
+                        neg_prompt += "Answer:"
+                else:
+                    prompt += " Answer:"
+                    if i != 0:
+                        pos_prompt += " Answer:"
+                        neg_prompt += " Answer:"
             else:
-                prompt += " Answer:"
-                if i != 0:
-                    pos_prompt += " Answer:"
-                    neg_prompt += " Answer:"
-        prompts.append(prompt)
-        if i != 0:
-            pos_prompts.append(pos_prompt)
-            neg_prompts.append(neg_prompt)
+                    prompt += " Answer:"
+                    if i != 0:
+                        pos_prompt += " Answer:"
+                        neg_prompt += " Answer:"
+            
+            prompts.append(prompt)
+            if i != 0:
+                pos_prompts.append(pos_prompt)
+                neg_prompts.append(neg_prompt)
 
-    with open(os.path.join(args.save_dir, "example_prompt.txt"), 'w') as fout:
-        fout.write(prompts[0])
+        with open(os.path.join(args.save_dir, "example_prompt.txt"), 'w') as fout:
+            fout.write(prompts[0])
 
-    if args.model_name_or_path:
-        print("Loading model and tokenizer...")
-        model, tokenizer = load_lm_and_tokenizer(
-            model_name_or_path=args.model_name_or_path,
-            tokenizer_name_or_path=args.tokenizer_name_or_path,
-            load_in_8bit=args.load_in_8bit,
-            use_fast_tokenizer=not args.use_slow_tokenizer,
-        )
-    elif args.regen_model_name_or_path:
-        model, tokenizer = load_dexperts_model_and_tokenizer(
-            model_name_or_path=args.regen_model_name_or_path,
-            chat_response_prefix="Answer:",
-            load_in_8bit=args.load_in_8bit,
-            use_fast_tokenizer=not args.use_slow_tokenizer,
-        )
-    
-    if i == 0:
-        outputs = generate_completions(
-            model=model,
-            tokenizer=tokenizer,
-            prompts=prompts,
-            max_new_tokens=512,
-            batch_size=args.eval_batch_size,
-            do_sample=False,
-        )
-    else:
-        outputs = dexperts_generate_completions(
-            model=model,
-            tokenizer=tokenizer,
-            base_prompts=prompts,
-            pos_prompts=pos_prompts,
-            neg_prompts=neg_prompts,
-            max_new_tokens=512,
-            batch_size=args.eval_batch_size,
-            do_sample=False,
-        )
-    outputs = [trim_output(o) for o in outputs]
-
-    predictions = []
-    for output in outputs:
-        # replace numbers like `x,xxx` with `xxxx`
-        output = re.sub(r"(\d),(\d)", r"\1\2", output)
-        numbers = re.findall(r"[-+]?\d*\.\d+|\d+", output)
-        if numbers:
-            predictions.append(numbers[-1])
+        if i == 0:
+            print("Loading model and tokenizer...")
+            model, tokenizer = load_lm_and_tokenizer(
+                model_name_or_path=args.model_name_or_path,
+                tokenizer_name_or_path=args.tokenizer_name_or_path,
+                load_in_8bit=args.load_in_8bit,
+                use_fast_tokenizer=not args.use_slow_tokenizer,
+            )
+        elif i == 1:
+            model, tokenizer = load_dexperts_model_and_tokenizer(
+                model_name_or_path=args.model_name_or_path,
+                chat_response_prefix="Answer:",
+                load_in_8bit=args.load_in_8bit,
+                use_fast_tokenizer=not args.use_slow_tokenizer,
+            )
         else:
-            predictions.append(output)
+            print(f"正在进行第{i}次迭代, 无需重新加载模型")
+            print(f"模型: {model.__class__.__name__}")
+            print(f"tokenizer: {tokenizer.__class__.__name__}")
 
-    print("Calculating accuracy...")
-    targets = [example["answer"] for example in test_data]
+        if i == 0:
+            outputs = generate_completions(
+                model=model,
+                tokenizer=tokenizer,
+                prompts=prompts,
+                max_new_tokens=512,
+                batch_size=args.eval_batch_size,
+                do_sample=False,
+            )
+        else:
+            outputs = dexperts_generate_completions(
+                model=model,
+                tokenizer=tokenizer,
+                base_prompts=prompts,
+                pos_prompts=pos_prompts,
+                neg_prompts=neg_prompts,
+                max_new_tokens=512,
+                batch_size=args.eval_batch_size,
+                do_sample=False,
+            )
+        outputs = [trim_output(o) for o in outputs]
+        if len(prefix_outputs) ==  0:
+            prefix_outputs = [f"{i}: " + outputs[index] + "\n" for index in range(len(outputs))]
+        else:
+            assert len(prefix_outputs) == len(outputs), "prefix_outputs and outputs must have the same length"
+            prefix_outputs = [prefix_outputs[index] + f"{i}: " + outputs[index] + "\n" for index in range(len(outputs))]
+        predictions = []
+        for output in outputs:
+            # replace numbers like `x,xxx` with `xxxx`
+            output = re.sub(r"(\d),(\d)", r"\1\2", output)
+            numbers = re.findall(r"[-+]?\d*\.\d+|\d+", output)
+            if numbers:
+                predictions.append(numbers[-1])
+            else:
+                predictions.append(output)
 
-    em_score = exact_match.compute(predictions=predictions, references=targets, ignore_case=True, ignore_punctuation=True)["exact_match"]
-    print(f"Exact match : {em_score}")
+        print("Calculating accuracy...")
+        targets = [example["answer"] for example in test_data]
 
-    predictions = [{
-        "question": example["question"],
-        "answer": example["answer"],
-        "model_output": output,
-        "prediction": pred
-    } for example, output, pred in zip(test_data, outputs, predictions)]
+        em_score = exact_match.compute(predictions=predictions, references=targets, ignore_case=True, ignore_punctuation=True)["exact_match"]
+        print(f"Exact match : {em_score}")
 
-    with open(os.path.join(args.save_dir, "predictions.jsonl"), "w") as fout:
-        for prediction in predictions:
-            fout.write(json.dumps(prediction) + "\n")
+        predictions = [{
+            "question": example["question"],
+            "answer": example["answer"],
+            "model_output": output,
+            "prediction": pred
+        } for example, output, pred in zip(test_data, outputs, predictions)]
 
-    with open(os.path.join(args.save_dir, "metrics.json"), "w") as fout:
-        json.dump({
-            "exact_match": em_score
-        }, fout, indent=4)
+        with open(os.path.join(args.save_dir, f"predictions_{i}.jsonl"), "w") as fout:
+            for prediction in predictions:
+                fout.write(json.dumps(prediction) + "\n")
+
+        with open(os.path.join(args.save_dir, f"metrics_{i}.json"), "w") as fout:
+            json.dump({
+                "exact_match": em_score
+            }, fout, indent=4)
 
 
 if __name__ == "__main__":
@@ -233,7 +253,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--chat_formatting_function",
         type=str,
-        default="eval.templates.create_prompt_with_tulu_chat_format",
+        default="eval.templates.create_prompt_with_llama2_chat_format",
         help="The function to use to create the chat format. This function will be dynamically imported. Please see examples in `eval/templates.py`."
     )
     args = parser.parse_args()
