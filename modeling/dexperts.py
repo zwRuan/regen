@@ -4,7 +4,7 @@ from transformers import AutoModelForCausalLM, PreTrainedTokenizer
 import torch.nn.functional as F
 from transformers.generation.utils import (
     ModelOutput,
-    #top_k_top_p_filtering,
+    top_k_top_p_filtering,
     StoppingCriteriaList,
     LogitsProcessorList
 )
@@ -19,7 +19,7 @@ class DExpertsLlama:
         model_name_or_path: str,
         tokenizer: PreTrainedTokenizer,
         system_prompt: str = None,
-        alpha: float = 0,
+        alpha: float = 1.0,
         chat_response_prefix: str = None,
         model_kwargs: Dict[str, Any] = None
     ):
@@ -57,15 +57,17 @@ class DExpertsLlama:
     def forward(
         self,
         base_inputs,
-        pos_inputs,
-        neg_inputs,
+        pos_inputs=None,
+        neg_inputs=None,
         return_dict=None
     ):
         base_outputs = self.model(**base_inputs, return_dict=return_dict)
-        pos_outputs = self.model(**pos_inputs, return_dict=return_dict)
-        neg_outputs = self.model(**neg_inputs, return_dict=return_dict)
+        if pos_inputs != None:
+            pos_outputs = self.model(**pos_inputs, return_dict=return_dict)
+            neg_outputs = self.model(**neg_inputs, return_dict=return_dict)
 
-        return base_outputs, pos_outputs, neg_outputs
+            return base_outputs, pos_outputs, neg_outputs
+        return base_outputs
 
     def _get_tokenized_chat_inputs(self, input_ids):
         """Decode input_ids and encode again to insert chat formatting"""
@@ -109,6 +111,9 @@ class DExpertsLlama:
         base_input_ids: Optional[torch.Tensor] = None,
         pos_input_ids: Optional[torch.Tensor] = None,
         neg_input_ids: Optional[torch.Tensor] = None,
+        base_attention_mask: Optional[torch.Tensor] = None,
+        pos_attention_mask: Optional[torch.Tensor] = None,
+        neg_attention_mask: Optional[torch.Tensor] = None,
         max_new_tokens: Optional[int] = 100,
         do_sample: bool = False,
         top_p: float = 1.0,
@@ -134,8 +139,11 @@ class DExpertsLlama:
             neg_kwargs['attention_mask'] = neg_inputs.attention_mask
         else:
             base_input_ids = base_input_ids.to(base_input_ids.device)
+            base_kwargs['attention_mask'] = base_attention_mask
             pos_input_ids = pos_input_ids.to(pos_input_ids.device)
+            pos_kwargs['attention_mask'] = pos_attention_mask
             neg_input_ids = neg_input_ids.to(neg_input_ids.device)
+            neg_kwargs['attention_mask'] = neg_attention_mask
 
         # keep track of which sequences are already finished
         unfinished_sequences = torch.ones(base_input_ids.shape[0], dtype=torch.long, device=base_input_ids.device)
@@ -143,31 +151,48 @@ class DExpertsLlama:
 
         if return_logits_for_analysis:
             analysis_data = defaultdict(list)
-
+        cal = False
+        input_length = len(base_input_ids)
         for step in range(max_new_tokens):
             # prepare model inputs with past_key_values and attention_mask
+            if step < 3:
+                cal = True
+            else:
+                cal = False
             base_inputs = self.model.prepare_inputs_for_generation(base_input_ids, **base_kwargs)
-            pos_inputs = self.model.prepare_inputs_for_generation(pos_input_ids, **pos_kwargs)
-            neg_inputs = self.model.prepare_inputs_for_generation(neg_input_ids, **neg_kwargs)
+            if cal:
+                pos_inputs = self.model.prepare_inputs_for_generation(pos_input_ids, **pos_kwargs)
+                neg_inputs = self.model.prepare_inputs_for_generation(neg_input_ids, **neg_kwargs)
 
             # DExperts
-            base_outputs, pos_outputs, neg_outputs = self.forward(
-                base_inputs, pos_inputs, neg_inputs, return_dict=True
-            )
+                base_outputs, pos_outputs, neg_outputs = self.forward(
+                    base_inputs, pos_inputs, neg_inputs, return_dict=True
+                )
+                base_next_token_logits = base_outputs.logits[..., -1, :]
+                pos_next_token_logits = pos_outputs.logits[..., -1, :]
+                neg_next_token_logits = neg_outputs.logits[..., -1, :]
 
-            base_next_token_logits = base_outputs.logits[..., -1, :]
-            pos_next_token_logits = pos_outputs.logits[..., -1, :]
-            neg_next_token_logits = neg_outputs.logits[..., -1, :]
+                # sometimes our experts have extra (irrelevant) tokens at the end of the normal vocabulary
+                pos_next_token_logits = pos_next_token_logits[:, :base_next_token_logits.shape[-1]]
+                neg_next_token_logits = neg_next_token_logits[:, :base_next_token_logits.shape[-1]]
+                # DExperts!
+                next_token_logits = (
+                    base_next_token_logits +
+                    self.alpha * (pos_next_token_logits - neg_next_token_logits)
+                )
+            else:
+                base_outputs = self.forward(
+                    base_inputs, return_dict=True)
+                pos_outputs, neg_outputs = None, None
+                base_next_token_logits = base_outputs.logits[..., -1, :]
+                # DExperts!
+                next_token_logits = (
+                    base_next_token_logits
+                )
 
-            # sometimes our experts have extra (irrelevant) tokens at the end of the normal vocabulary
-            pos_next_token_logits = pos_next_token_logits[:, :base_next_token_logits.shape[-1]]
-            neg_next_token_logits = neg_next_token_logits[:, :base_next_token_logits.shape[-1]]
+            
 
-            # DExperts!
-            next_token_logits = (
-                base_next_token_logits +
-                self.alpha * (pos_next_token_logits - neg_next_token_logits)
-            )
+            
 
             # pre-process logits
             # if logits_processor:
@@ -176,8 +201,8 @@ class DExpertsLlama:
             # warp logits
             if temperature != 1.0:
                 next_token_logits = next_token_logits / temperature
-            # if top_p < 1.0:
-            #     next_token_logits = top_k_top_p_filtering(next_token_logits, top_p=top_p)
+            if top_p < 1.0:
+                next_token_logits = top_k_top_p_filtering(next_token_logits, top_p=top_p)
 
             # decode
             if do_sample:
@@ -228,16 +253,16 @@ class DExpertsLlama:
                 if k.startswith('logits'):
                     analysis_data[k] = torch.cat(analysis_data[k], dim=1)
             return base_input_ids, analysis_data
-
         return base_input_ids
 
     def _update_model_kwargs_for_generation(
         self,
-        outputs: ModelOutput,
-        kwargs: Dict[str, Any],
+        outputs: Optional[ModelOutput] = None,
+        kwargs: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
         # update past_key_values
-        kwargs["past_key_values"] = outputs.past_key_values
+        if outputs is not None:
+            kwargs["past_key_values"] = outputs.past_key_values
 
         # update attention mask
         if "attention_mask" in kwargs:

@@ -2,10 +2,10 @@
 export PYTHONPATH=/workspace/rzw/proxy-tuning/evaluate/metrics:$PYTHONPATH
 export CUDA_VISIBLE_DEVICES=0,1
 size=13
-echo "Results dir: results/gsm/dexperts-${size}B"
+echo "Results dir: results/gsm/dexperts-${size}B-alpha2"
 python -m eval.gsm.run_eval \
-    --data_dir data/eval/gsm/ \
-    --save_dir results/gsm/dexperts-${size}B \
+    --data_dir data/eval/gsm \
+    --save_dir results/gsm/dexperts-${size}B-test \
     --model_name_or_path meta-math/MetaMath-7B-V1.0 \
-    --eval_batch_size 10 \
-    
+    --eval_batch_size 1 \
+    --alpha 5 \

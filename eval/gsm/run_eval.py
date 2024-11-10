@@ -41,7 +41,7 @@ def main(args):
     prefix_outputs = []
     print("Loading data...")
     test_data = []
-    with open(os.path.join(args.data_dir, "test.jsonl")) as fin:
+    with open(os.path.join(args.data_dir, "test_error.jsonl")) as fin:
         for line in fin:
             example = json.loads(line)
             test_data.append({
@@ -56,9 +56,9 @@ def main(args):
 
     if args.max_examples and len(test_data) > args.max_examples:
         test_data = random.sample(test_data, args.max_examples)
-    test_data = test_data[:40]
+    test_data = test_data[:20]
     ensure_dir(args.save_dir)
-    for i in range(5):
+    for i in range(2):
         prompt_prefix = "Answer the following question.\n\n"
         prompts = []
         if i != 0:
@@ -67,7 +67,7 @@ def main(args):
             pos_prefix = "You have already provided answers to this question in previous iterations. Here are those answers: \n\n"
             neg_prefix = "You have already provided answers to this question in previous iterations. Here are those answers: \n\n"
             pos_prefix_end = "\nNow, based on these previous answers, please provide a new, unique answer to the following question: \n\n"
-            neg_prefix_end = "\nNow, based on these previous answers, please provide a new answer to the following question that is similar to the ones you have already given: \n\n"
+            neg_prefix_end = "\nNow, based on these previous answers, please provide a answer to the following question that is similar to the ones you have already given: \n\n"
         chat_formatting_function = dynamic_import_function(args.chat_formatting_function) if args.use_chat_format else None
         for num_example, example in enumerate(test_data):
             prompt = prompt_prefix + "Question: " + example["question"].strip()
@@ -116,6 +116,7 @@ def main(args):
         elif i == 1:
             model, tokenizer = load_dexperts_model_and_tokenizer(
                 model_name_or_path=args.model_name_or_path,
+                alpha=args.alpha,
                 chat_response_prefix="Answer:",
                 load_in_8bit=args.load_in_8bit,
                 use_fast_tokenizer=not args.use_slow_tokenizer,
@@ -132,7 +133,7 @@ def main(args):
                 prompts=prompts,
                 max_new_tokens=512,
                 batch_size=args.eval_batch_size,
-                do_sample=False,
+                do_sample=True,
             )
         else:
             outputs = dexperts_generate_completions(
@@ -143,7 +144,7 @@ def main(args):
                 neg_prompts=neg_prompts,
                 max_new_tokens=512,
                 batch_size=args.eval_batch_size,
-                do_sample=False,
+                do_sample=True,
             )
         outputs = [trim_output(o) for o in outputs]
         if len(prefix_outputs) ==  0:
@@ -166,7 +167,6 @@ def main(args):
 
         em_score = exact_match.compute(predictions=predictions, references=targets, ignore_case=True, ignore_punctuation=True)["exact_match"]
         print(f"Exact match : {em_score}")
-
         predictions = [{
             "question": example["question"],
             "answer": example["answer"],
@@ -182,7 +182,19 @@ def main(args):
             json.dump({
                 "exact_match": em_score
             }, fout, indent=4)
-
+        # prediction_errors = []
+        # for example, output, pred in zip(test_data, outputs, predictions):
+        #     if abs(float(pred) - float(example['answer'])) > 0.001:
+        #         prediction_error = {
+        #             "question": example["question"],
+        #             "answer": example["answer"],
+        #             "model_output": output,
+        #             "prediction": pred
+        #         }
+        #         prediction_errors.append(prediction_error)
+        # with open(os.path.join(args.save_dir, f"error_predictions_{i}.jsonl"), "w") as fout:
+        #     for prediction_error in prediction_errors:
+        #         fout.write(json.dumps(prediction_error) + "\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -255,6 +267,11 @@ if __name__ == "__main__":
         type=str,
         default="eval.templates.create_prompt_with_llama2_chat_format",
         help="The function to use to create the chat format. This function will be dynamically imported. Please see examples in `eval/templates.py`."
+    )
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=1.0,
     )
     args = parser.parse_args()
 

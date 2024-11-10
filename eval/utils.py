@@ -219,6 +219,9 @@ def dexperts_generate_completions(
             base_input_ids=base_batch_input_ids,
             pos_input_ids=pos_batch_input_ids,
             neg_input_ids=neg_batch_input_ids,
+            base_attention_mask=base_attention_mask,
+            pos_attention_mask=pos_attention_mask,
+            neg_attention_mask=neg_attention_mask,
             stopping_criteria=stopping_criteria,
             logits_processor=logits_processor,
             temperature=temperature,
@@ -290,7 +293,7 @@ def load_lm_and_tokenizer(
     if not tokenizer_name_or_path:
         tokenizer_name_or_path = model_name_or_path
 
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name_or_path, use_fast=use_fast_tokenizer)
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name_or_path, use_fast=use_fast_tokenizer,model_max_length=1024)
     tokenizer = add_pad_token(tokenizer, padding_side)
 
     return model, tokenizer
@@ -325,7 +328,7 @@ def load_dexperts_model_and_tokenizer(
         'load_in_8bit': load_in_8bit,
     }
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast_tokenizer=use_fast_tokenizer)
+    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast_tokenizer=use_fast_tokenizer, model_max_length=1024)
     tokenizer = add_pad_token(tokenizer, padding_side)
 
     model = DExpertsLlama(
