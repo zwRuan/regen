@@ -13,32 +13,32 @@ from eval.utils import (
     load_dexperts_model_and_tokenizer,
     ensure_dir
 )
-
+import transformers 
+def get_templated_prompt(
+    prompt: str,
+    llm_name: str,
+    generation_tokenizer: transformers.PreTrainedTokenizerFast,
+) -> str:
+    if "Instruct" in llm_name:
+        conversation = [
+            {"role": "user", "content": prompt},
+        ]
+        templated_prompt: str = generation_tokenizer.apply_chat_template(
+            conversation, add_generation_prompt=True, tokenize=False
+        )
+    elif any(s in llm_name for s in ["sft10k", "alpaca-7b", "dpo", "ppo", "human"]):
+        templated_prompt = f"<s>Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\n{prompt}\n\n### Response:"
+    elif "llama-2" in llm_name.lower():
+        templated_prompt = f"<s>[INST]\n{prompt} [/INST]"
+    else:
+        templated_prompt = generation_tokenizer.bos_token + prompt
+    return templated_prompt
 
 def main(args):
     random.seed(42)
     ensure_dir(args.save_dir)
 
     logging.info("loading data and model...")
-    if args.data_path:
-        alpaca_eval_data = pd.read_json(args.data_path, lines=True).to_dict(orient="records")
-    else:
-        alpaca_eval_data = datasets.load_dataset("tatsu-lab/alpaca_eval", "alpaca_eval")["eval"]
-
-    prompts = []
-    chat_formatting_function = dynamic_import_function(args.chat_formatting_function) if args.use_chat_format else None
-    for example in alpaca_eval_data:
-        prompt = example["instruction"]
-        if args.use_chat_format:
-            messages = [{"role": "user", "content": prompt}]
-            prompt = chat_formatting_function(messages, add_bos=False)
-        prompts.append(prompt)
-
-    prompts = prompts[:args.max_examples]
-
-    with open(os.path.join(args.save_dir, "example_prompt.txt"), 'w') as fout:
-        fout.write(prompts[0])
-
     if args.model_name_or_path:
         model, tokenizer = load_lm_and_tokenizer(
             model_name_or_path=args.model_name_or_path,
@@ -54,6 +54,25 @@ def main(args):
             load_in_8bit=args.load_in_8bit,
             use_fast_tokenizer=not args.use_slow_tokenizer
         )
+    if args.data_path:
+        alpaca_eval_data = pd.read_json(args.data_path).to_dict(orient="records")
+    else:
+        alpaca_eval_data = datasets.load_dataset("data/eval/alpaca_eval", "alpaca_eval")["eval"]
+
+    prompts = []
+    chat_formatting_function = dynamic_import_function(args.chat_formatting_function) if args.use_chat_format else None
+    for example in alpaca_eval_data:
+        prompt = example["prompt"]
+        if args.use_chat_format:
+            prompt = get_templated_prompt(prompt, args.model_name_or_path, tokenizer)
+        prompts.append(prompt)
+
+    prompts = prompts[:args.max_examples]
+
+    with open(os.path.join(args.save_dir, "example_prompt.txt"), 'w') as fout:
+        fout.write(prompts[0])
+
+    
 
     stop_sequences = ["\n\nComment:"]  # degenerate stuff for llama 2
     stop_sequences = [tokenizer.encode(" " + x, add_special_tokens=False)[1:] for x in stop_sequences]
@@ -76,26 +95,26 @@ def main(args):
             fout.write(json.dumps(example) + "\n")
             model_results.append(example)
 
-    evaluation_args = {
-        "model_outputs": model_results,
-        "annotators_config": "alpaca_eval_gpt4_0314",
-        "output_path": args.save_dir,
-        "is_return_instead_of_print": True,
-        "precomputed_leaderboard": None,
-        "is_cache_leaderboard": False,
-        "caching_path": os.path.join(args.save_dir, "alpaca_eval_annotator_cache.json")
-    }
+    # evaluation_args = {
+    #     "model_outputs": model_results,
+    #     "annotators_config": "alpaca_eval_gpt4_0314",
+    #     "output_path": args.save_dir,
+    #     "is_return_instead_of_print": True,
+    #     "precomputed_leaderboard": None,
+    #     "is_cache_leaderboard": False,
+    #     "caching_path": os.path.join(args.save_dir, "alpaca_eval_annotator_cache.json")
+    # }
 
-    if args.reference_path:
-        evaluation_args["reference_outputs"] = args.reference_path
+    # if args.reference_path:
+    #     evaluation_args["reference_outputs"] = args.reference_path
 
-    df_leaderboard, annotations = alpaca_farm_evaluate(**evaluation_args)
+    # df_leaderboard, annotations = alpaca_farm_evaluate(**evaluation_args)
 
-    # save to json
-    with open(os.path.join(args.save_dir, "metrics.json"), "w") as fout:
-        for k in df_leaderboard.to_dict():
-            df_leaderboard[k] = df_leaderboard[k][model_name]
-        json.dump(df_leaderboard, fout, indent=4)
+    # # save to json
+    # with open(os.path.join(args.save_dir, "metrics.json"), "w") as fout:
+    #     for k in df_leaderboard.to_dict():
+    #         df_leaderboard[k] = df_leaderboard[k][model_name]
+    #     json.dump(df_leaderboard, fout, indent=4)
 
 
 if __name__ == "__main__":

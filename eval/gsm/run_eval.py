@@ -12,14 +12,15 @@ from eval.utils import (
     ensure_dir,
     dexperts_generate_completions
 )
-import debugpy
-try:
-    # 5678 is the default attach port in the VS Code debug configurations. Unless a host and port are specified, host defaults to 127.0.0.1
-    debugpy.listen(("localhost", 16236))
-    print("Waiting for debugger attach")
-    debugpy.wait_for_client()
-except Exception as e:
-    pass
+import transformers 
+# import debugpy
+# try:
+#     # 5678 is the default attach port in the VS Code debug configurations. Unless a host and port are specified, host defaults to 127.0.0.1
+#     debugpy.listen(("localhost", 16236))
+#     print("Waiting for debugger attach")
+#     debugpy.wait_for_client()
+# except Exception as e:
+#     pass
 
 exact_match = evaluate.load("/workspace/rzw/proxy-tuning/evaluate/metrics/exact_match/exact_match.py")
 
@@ -35,6 +36,37 @@ def trim_output(output):
 
     return output
 
+def get_templated_prompt(
+    prompt: str,
+    llm_name: str,
+    generation_tokenizer: transformers.PreTrainedTokenizerFast,
+) -> str:
+    if "Instruct" in llm_name:
+        conversation = [
+            {"role": "user", "content": prompt},
+        ]
+        templated_prompt: str = generation_tokenizer.apply_chat_template(
+            conversation, add_generation_prompt=True, tokenize=False
+        )
+    elif any(s in llm_name for s in ["sft10k", "alpaca-7b", "dpo", "ppo", "human"]):
+        templated_prompt = f"<s>Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\n{prompt}\n\n### Response:"
+    elif "llama-2" in llm_name.lower():
+        templated_prompt = f"<s>[INST]\n{prompt} [/INST]"
+    else:
+        templated_prompt = generation_tokenizer.bos_token + prompt
+    return templated_prompt
+
+
+def get_input_encoding(
+    questions: list[str],
+    generation_model: transformers.LlamaForCausalLM,
+    generation_tokenizer: transformers.PreTrainedTokenizerFast,
+) -> transformers.BatchEncoding:
+    input_encoding = generation_tokenizer(
+        questions, padding=True, add_special_tokens=False, return_tensors="pt"
+    ).to(generation_model.device)
+    return input_encoding
+
 
 def main(args):
     random.seed(42)
@@ -48,6 +80,10 @@ def main(args):
                 "question": example["question"],
                 "answer": example["answer"].split("####")[1].strip()
             })
+            # test_data.append({
+            #     "question": example["question"],
+            #     "answer": example["answer"],
+            # })
 
     # some numbers are in the `x,xxx` format, and we want to remove the comma
     for example in test_data:
@@ -56,145 +92,140 @@ def main(args):
 
     if args.max_examples and len(test_data) > args.max_examples:
         test_data = random.sample(test_data, args.max_examples)
-    test_data = test_data[:20]
+    test_data = test_data
     ensure_dir(args.save_dir)
-    for i in range(2):
-        prompt_prefix = "Answer the following question.\n\n"
-        prompts = []
-        if i != 0:
+    for j in range(1):
+        for i in range(2):
+            if i == 0:
+                print("Loading model and tokenizer...")
+                model, tokenizer = load_lm_and_tokenizer(
+                    model_name_or_path=args.model_name_or_path,
+                    tokenizer_name_or_path=args.tokenizer_name_or_path,
+                    load_in_8bit=args.load_in_8bit,
+                    use_fast_tokenizer=not args.use_slow_tokenizer,
+                )
+            elif i == 1:
+                model, tokenizer = load_dexperts_model_and_tokenizer(
+                    model_name_or_path=args.model_name_or_path,
+                    alpha=args.alpha,
+                    chat_response_prefix="Answer:",
+                    load_in_8bit=args.load_in_8bit,
+                    use_fast_tokenizer=not args.use_slow_tokenizer,
+                )
+            else:
+                print(f"正在进行第{i}次迭代, 无需重新加载模型")
+                print(f"模型: {model.__class__.__name__}")
+                print(f"tokenizer: {tokenizer.__class__.__name__}")
+
+            prompt_prefix = "Answer the following question.\n\n"
+            prompts = []
+            # if i != 0:
             pos_prompts = []
             neg_prompts = []
             pos_prefix = "You have already provided answers to this question in previous iterations. Here are those answers: \n\n"
             neg_prefix = "You have already provided answers to this question in previous iterations. Here are those answers: \n\n"
             pos_prefix_end = "\nNow, based on these previous answers, please provide a new, unique answer to the following question: \n\n"
             neg_prefix_end = "\nNow, based on these previous answers, please provide a answer to the following question that is similar to the ones you have already given: \n\n"
-        chat_formatting_function = dynamic_import_function(args.chat_formatting_function) if args.use_chat_format else None
-        for num_example, example in enumerate(test_data):
-            prompt = prompt_prefix + "Question: " + example["question"].strip()
-            if i != 0:
-                pos_prompt = pos_prefix + prefix_outputs[num_example] + pos_prefix_end + "Question: " + example["question"].strip()
-                neg_prompt = neg_prefix + prefix_outputs[num_example] + neg_prefix_end + "Question: " + example["question"].strip()
-            if args.use_chat_format:
-                base_messages = [{"role": "user", "content": prompt}]
-                prompt = chat_formatting_function(base_messages, add_bos=False)
-                pos_messages = [{"role": "user", "content": pos_prompt}]
-                pos_prompt = chat_formatting_function(pos_messages, add_bos=False)
-                neg_messages = [{"role": "user", "content": neg_prompt}]
-                neg_prompt = chat_formatting_function(neg_messages, add_bos=False)
-                if prompt[-1] in ["\n", " "]:
-                    prompt += "Answer:"
+            test = "Since Wendi gives the chickens 15 cups in the morning, and another 25 cups in the afternoon, the total is 15 + 25 = 40 cups of feed. Since this is for 3 meals total, and there are 20 chickens, each chicken eats 40 / 20 = 2 cups in a meal. Each chicken eats 2 cups in a meal, but since there are three meals, each chicken eats 2 / 3 =.67 cups of feed per meal. Then Wendi needs to give each chicken.67 x 3 = 2 cups of feed. The answer is 2."
+            end = '\nPlease provide your answer in the same format as the previous answers, without any additional introductory sentences.'
+            chat_formatting_function = dynamic_import_function(args.chat_formatting_function) if args.use_chat_format else None
+            for num_example, example in enumerate(test_data):
+                #prompt = prompt_prefix + "Question: " + example["question"].strip()
+                prompt = prompt = prompt_prefix + "Question: " + example["question"].strip()
+                if i != 0:
+                    # pos_prompt = pos_prefix + prefix_outputs[num_example] + pos_prefix_end + "Question: " + example["question"].strip()
+                    # neg_prompt = neg_prefix + prefix_outputs[num_example] + neg_prefix_end + "Question: " + example["question"].strip()
+                    pos_prompt = pos_prefix + test + pos_prefix_end + "Question: " + example["question"].strip() + end
+                    neg_prompt = neg_prefix + test + neg_prefix_end + "Question: " + example["question"].strip() + end
+                if args.use_chat_format:
+                    prompt = get_templated_prompt(prompt, args.model_name_or_path, tokenizer)
                     if i != 0:
-                        pos_prompt += "Answer:"
-                        neg_prompt += "Answer:"
+                        pos_prompt = get_templated_prompt(pos_prompt, args.model_name_or_path, tokenizer)
+                        neg_prompt = get_templated_prompt(neg_prompt, args.model_name_or_path, tokenizer)
                 else:
                     prompt += " Answer:"
                     if i != 0:
                         pos_prompt += " Answer:"
                         neg_prompt += " Answer:"
-            else:
-                    prompt += " Answer:"
-                    if i != 0:
-                        pos_prompt += " Answer:"
-                        neg_prompt += " Answer:"
+                
+                prompts.append(prompt)
+                if i != 0:
+                    pos_prompts.append(pos_prompt)
+                    neg_prompts.append(neg_prompt)
+
+            # with open(os.path.join(args.save_dir, "example_prompt.txt"), 'w') as fout:
+            #     fout.write(prompts[0][0]['content'])
+
             
-            prompts.append(prompt)
-            if i != 0:
-                pos_prompts.append(pos_prompt)
-                neg_prompts.append(neg_prompt)
-
-        with open(os.path.join(args.save_dir, "example_prompt.txt"), 'w') as fout:
-            fout.write(prompts[0])
-
-        if i == 0:
-            print("Loading model and tokenizer...")
-            model, tokenizer = load_lm_and_tokenizer(
-                model_name_or_path=args.model_name_or_path,
-                tokenizer_name_or_path=args.tokenizer_name_or_path,
-                load_in_8bit=args.load_in_8bit,
-                use_fast_tokenizer=not args.use_slow_tokenizer,
-            )
-        elif i == 1:
-            model, tokenizer = load_dexperts_model_and_tokenizer(
-                model_name_or_path=args.model_name_or_path,
-                alpha=args.alpha,
-                chat_response_prefix="Answer:",
-                load_in_8bit=args.load_in_8bit,
-                use_fast_tokenizer=not args.use_slow_tokenizer,
-            )
-        else:
-            print(f"正在进行第{i}次迭代, 无需重新加载模型")
-            print(f"模型: {model.__class__.__name__}")
-            print(f"tokenizer: {tokenizer.__class__.__name__}")
-
-        if i == 0:
-            outputs = generate_completions(
-                model=model,
-                tokenizer=tokenizer,
-                prompts=prompts,
-                max_new_tokens=512,
-                batch_size=args.eval_batch_size,
-                do_sample=True,
-            )
-        else:
-            outputs = dexperts_generate_completions(
-                model=model,
-                tokenizer=tokenizer,
-                base_prompts=prompts,
-                pos_prompts=pos_prompts,
-                neg_prompts=neg_prompts,
-                max_new_tokens=512,
-                batch_size=args.eval_batch_size,
-                do_sample=True,
-            )
-        outputs = [trim_output(o) for o in outputs]
-        if len(prefix_outputs) ==  0:
-            prefix_outputs = [f"{i}: " + outputs[index] + "\n" for index in range(len(outputs))]
-        else:
-            assert len(prefix_outputs) == len(outputs), "prefix_outputs and outputs must have the same length"
-            prefix_outputs = [prefix_outputs[index] + f"{i}: " + outputs[index] + "\n" for index in range(len(outputs))]
-        predictions = []
-        for output in outputs:
-            # replace numbers like `x,xxx` with `xxxx`
-            output = re.sub(r"(\d),(\d)", r"\1\2", output)
-            numbers = re.findall(r"[-+]?\d*\.\d+|\d+", output)
-            if numbers:
-                predictions.append(numbers[-1])
+            if i == 0:
+                outputs = generate_completions(
+                    model=model,
+                    tokenizer=tokenizer,
+                    prompts=prompts,
+                    max_new_tokens=512,
+                    batch_size=args.eval_batch_size,
+                    do_sample=True,
+                )
             else:
-                predictions.append(output)
+                outputs = dexperts_generate_completions(
+                    model=model,
+                    tokenizer=tokenizer,
+                    base_prompts=prompts,
+                    pos_prompts=pos_prompts,
+                    neg_prompts=neg_prompts,
+                    max_new_tokens=512,
+                    batch_size=args.eval_batch_size,
+                    do_sample=True,
+                )
+            outputs = [trim_output(o) for o in outputs]
+            if len(prefix_outputs) ==  0:
+                prefix_outputs = [f"{i}: " + outputs[index] + "\n" for index in range(len(outputs))]
+            else:
+                assert len(prefix_outputs) == len(outputs), "prefix_outputs and outputs must have the same length"
+                prefix_outputs = [prefix_outputs[index] + f"{i}: " + outputs[index] + "\n" for index in range(len(outputs))]
+            predictions = []
+            for output in outputs:
+                # replace numbers like `x,xxx` with `xxxx`
+                output = re.sub(r"(\d),(\d)", r"\1\2", output)
+                numbers = re.findall(r"[-+]?\d*\.\d+|\d+", output)
+                if numbers:
+                    predictions.append(numbers[-1])
+                else:
+                    predictions.append(output)
 
-        print("Calculating accuracy...")
-        targets = [example["answer"] for example in test_data]
+            print("Calculating accuracy...")
+            targets = [example["answer"] for example in test_data]
 
-        em_score = exact_match.compute(predictions=predictions, references=targets, ignore_case=True, ignore_punctuation=True)["exact_match"]
-        print(f"Exact match : {em_score}")
-        predictions = [{
-            "question": example["question"],
-            "answer": example["answer"],
-            "model_output": output,
-            "prediction": pred
-        } for example, output, pred in zip(test_data, outputs, predictions)]
+            em_score = exact_match.compute(predictions=predictions, references=targets, ignore_case=True, ignore_punctuation=True)["exact_match"]
+            print(f"Exact match : {em_score}")
+            predictions = [{
+                "question": example["question"],
+                "answer": example["answer"],
+                "model_output": output,
+                "prediction": pred
+            } for example, output, pred in zip(test_data, outputs, predictions)]
 
-        with open(os.path.join(args.save_dir, f"predictions_{i}.jsonl"), "w") as fout:
-            for prediction in predictions:
-                fout.write(json.dumps(prediction) + "\n")
+            with open(os.path.join(args.save_dir, f"predictions_{2*j+i}.jsonl"), "w") as fout:
+                for prediction in predictions:
+                    fout.write(json.dumps(prediction) + "\n")
 
-        with open(os.path.join(args.save_dir, f"metrics_{i}.json"), "w") as fout:
-            json.dump({
-                "exact_match": em_score
-            }, fout, indent=4)
-        # prediction_errors = []
-        # for example, output, pred in zip(test_data, outputs, predictions):
-        #     if abs(float(pred) - float(example['answer'])) > 0.001:
-        #         prediction_error = {
-        #             "question": example["question"],
-        #             "answer": example["answer"],
-        #             "model_output": output,
-        #             "prediction": pred
-        #         }
-        #         prediction_errors.append(prediction_error)
-        # with open(os.path.join(args.save_dir, f"error_predictions_{i}.jsonl"), "w") as fout:
-        #     for prediction_error in prediction_errors:
-        #         fout.write(json.dumps(prediction_error) + "\n")
+            with open(os.path.join(args.save_dir, f"metrics_{2*j+i}.json"), "w") as fout:
+                json.dump({
+                    "exact_match": em_score
+                }, fout, indent=4)
+            # prediction_errors = []
+            # for example, output, pred in zip(test_data, outputs, predictions):
+            #     if abs(float(pred) - float(example['answer'])) > 0.001:
+            #         prediction_error = {
+            #             "question": example["question"],
+            #             "answer": example["answer"],
+            #             "model_output": output,
+            #             "prediction": pred
+            #         }
+            #         prediction_errors.append(prediction_error)
+            # with open(os.path.join(args.save_dir, f"error_predictions_{i}.jsonl"), "w") as fout:
+            #     for prediction_error in prediction_errors:
+            #         fout.write(json.dumps(prediction_error) + "\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -265,7 +296,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--chat_formatting_function",
         type=str,
-        default="eval.templates.create_prompt_with_llama2_chat_format",
+        default="eval.templates.create_prompt_with_llama3_chat_format",
         help="The function to use to create the chat format. This function will be dynamically imported. Please see examples in `eval/templates.py`."
     )
     parser.add_argument(

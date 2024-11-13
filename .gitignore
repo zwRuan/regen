@@ -159,6 +159,7 @@ results
 **/*$py.class
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 picture/
 Logs/
 nv/
@@ -168,3 +169,6 @@ datas
 >>>>>>> 1f4a48f (updata)
 =======
 >>>>>>> 761c44d (updata)
+=======
+picture/
+>>>>>>> 0307510 (写了alpaca_farm)

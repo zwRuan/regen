@@ -26,3 +26,19 @@ def create_prompt_with_llama2_chat_format(messages, bos="<s>", eos="</s>", add_b
     # The next line removes the bos token if add_bos is False.
     formatted_text = formatted_text[len(bos):] if not add_bos else formatted_text
     return formatted_text
+def create_prompt_with_llama3_chat_format(messages, bos="<|begin_of_text|>", add_generation_prompt=False):
+    '''
+    该函数用于生成 LLaMa3 聊天格式的提示，基于 LLaMa2 的实现。
+    '''
+    formatted_text = ""
+    # 遍历消息并构建格式化文本
+    for index, message in enumerate(messages):
+        content = f"<|start_header_id|>{message['role']}<|end_header_id|>\n\n{(message['content']).strip()}<|eot_id|>"
+        if index == 0:
+            content = bos + content
+        formatted_text += content
+
+    if add_generation_prompt:
+        formatted_text += "<|start_header_id|>assistant<|end_header_id|>\n\n"
+
+    return formatted_text
