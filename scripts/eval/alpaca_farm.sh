@@ -17,10 +17,9 @@
 export CUDA_VISIBLE_DEVICES=0
 # Evaluating Llama 2 chat
 size=13
-python -m eval.alpaca_farm.run_eval \
+python -m eval.alpaca_farm.case_study \
     --model_name_or_path meta-llama/Meta-Llama-3-8B-Instruct \
-    --save_dir results/alpaca_farm/llama2-chat-${size}B \
-    --data_path data/eval/alpaca_eval/alpaca_farm_100.json \
-    --eval_batch_size 20 \
-    --use_chat_format \
-    --chat_formatting_function eval.templates.create_prompt_with_llama3_chat_format
+    --save_dir results/alpaca_farm/log_softmax_alpha_0.5 \
+    --data_path data/eval/alpaca_eval/test.json \
+    --eval_batch_size 1 \
+    --alpha 0.5 \

@@ -4,12 +4,12 @@ from transformers import AutoModelForCausalLM, PreTrainedTokenizer
 import torch.nn.functional as F
 from transformers.generation.utils import (
     ModelOutput,
-    top_k_top_p_filtering,
+    #top_k_top_p_filtering,
     StoppingCriteriaList,
     LogitsProcessorList
 )
 from collections import defaultdict
-
+from tqdm import tqdm
 B_SYS, E_SYS = "<<SYS>>\n", "\n<</SYS>>\n\n"
 
 
@@ -151,14 +151,15 @@ class DExpertsLlama:
 
         if return_logits_for_analysis:
             analysis_data = defaultdict(list)
-        cal = True
+        
         input_length = len(base_input_ids[0])
         import matplotlib.pyplot as plt
 
         all_base = []
         all_max_diff = []
         all_max_base = []
-        for step in range(max_new_tokens):
+        cal = True
+        for step in tqdm(range(max_new_tokens)):
             # prepare model inputs with past_key_values and attention_mask
             # if step < 3:
             #     cal = True
@@ -180,16 +181,10 @@ class DExpertsLlama:
                 # sometimes our experts have extra (irrelevant) tokens at the end of the normal vocabulary
                 pos_next_token_logits = pos_next_token_logits[:, :base_next_token_logits.shape[-1]]
                 neg_next_token_logits = neg_next_token_logits[:, :base_next_token_logits.shape[-1]]
-                diff = pos_next_token_logits - neg_next_token_logits
-                max_diff_index = torch.argmax(diff, dim=-1)
-                base = base_next_token_logits[0][max_diff_index]
-                max_diff = diff[0][max_diff_index]
-                max_index = torch.argmax(base_next_token_logits, dim=-1)
-                max_base = base_next_token_logits[0][max_index]
-                all_base.append(base.item())
-                all_max_diff.append(max_diff.item())
-                all_max_base.append(max_base.item())
                 # DExperts!
+                base_next_token_logits = F.log_softmax(base_next_token_logits, dim=-1)
+                pos_next_token_logits = F.log_softmax(pos_next_token_logits, dim=-1)
+                neg_next_token_logits = F.log_softmax(neg_next_token_logits, dim=-1)
                 next_token_logits = (
                     base_next_token_logits +
                     self.alpha * (pos_next_token_logits - neg_next_token_logits)
@@ -207,7 +202,15 @@ class DExpertsLlama:
             # pre-process logits
             # if logits_processor:
             #     next_token_logits = logits_processor(input_ids, next_token_logits)
-
+            # top_k_values, top_k_indices = torch.topk(base_next_token_logits, k=5, dim=-1)
+            # top_k_values, top_k_indices = torch.topk(pos_next_token_logits, k=5, dim=-1)
+            # top_k_values, top_k_indices = torch.topk(neg_next_token_logits, k=5, dim=-1)
+            # top_k_values, top_k_indices = torch.topk(pos_next_token_logits - neg_next_token_logits, k=5, dim=-1)
+            # top_k_values, top_k_indices = torch.topk(next_token_logits, k=5, dim=-1)
+            # self.tokenizer.batch_decode(top_k_indices[0])
+            # pre-process logits
+            # if logits_processor:
+            #     next_token_logits = logits_processor(input_ids, next_token_logits)
             # warp logits
             if temperature != 1.0:
                 next_token_logits = next_token_logits / temperature
@@ -225,9 +228,6 @@ class DExpertsLlama:
                 next_tokens * unfinished_sequences +
                 self.tokenizer.pad_token_id * (1 - unfinished_sequences)
             )
-            if next_tokens.item() == 4001: 
-                print(f"next_token: {next_tokens}")
-                cal = True
             if return_logits_for_analysis:
                 next_token_logits_dict = {
                     'dexperts': next_token_logits,
@@ -259,15 +259,6 @@ class DExpertsLlama:
             # stop when each sentence is finished
             if unfinished_sequences.max() == 0:
                 break
-        plt.figure(figsize=(10, 6))
-        plt.plot(all_base, label='all_base')
-        plt.plot(all_max_diff, label='all_max_diff')
-        plt.plot(all_max_base, label='all_max_base')
-        plt.xlabel('Step')
-        plt.ylabel('Value')
-        plt.title('all_base, all_max_diff, and all_max_base Over Steps')
-        plt.legend()
-        plt.savefig('1_change_prompt.png')
         if return_logits_for_analysis:
             for k in analysis_data.keys():
                 if k.startswith('logits'):

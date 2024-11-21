@@ -9,11 +9,71 @@ from transformers import (
     NoBadWordsLogitsProcessor,
     SuppressTokensAtBeginLogitsProcessor
 )
-
+import transformers
 
 def ensure_dir(d):
     if not os.path.exists(d):
         os.makedirs(d, exist_ok=True)
+
+def get_input_encoding(
+    questions: list[str],
+    generation_model: transformers.LlamaForCausalLM,
+    generation_tokenizer: transformers.PreTrainedTokenizerFast,
+) -> transformers.BatchEncoding:
+    input_encoding = generation_tokenizer(
+        questions, padding=True, add_special_tokens=False, return_tensors="pt"
+    ).to(generation_model.device)
+    return input_encoding
+def get_output_texts(
+    generation_ids: torch.LongTensor,
+    prompt: str,
+    generation_tokenizer,
+    skip_special_tokens: bool = False,
+) -> list[str]:
+    generation_texts = generation_tokenizer.batch_decode(
+        generation_ids, skip_special_tokens=skip_special_tokens
+    )
+    output_texts: list[str] = []
+    for generation_text in generation_texts:
+        generation_text = generation_text.replace(
+            "<s> [INST]", "<s>[INST]"
+        )  # for llama-2-chat-hf
+        split_pieces = generation_text.split(prompt)
+        # print(generation_ids)
+        # print(generation_tokenizer.decode(generation_ids[0]))
+        # print(prompt)
+        # print(generation_text)
+        # # write to txt:
+        # with open('output.txt', 'w') as f:
+        #     f.write(generation_text)
+        # with open('output2.txt', 'w') as f:
+        #     f.write(prompt)
+        try:
+            assert (
+                prompt in generation_text
+            ), f"prompt: {prompt} | generation_text: {generation_text}"
+            assert (
+                len(split_pieces) > 1
+            ), f"prompt: {prompt} | generation_text: {generation_text}, {len(split_pieces)}, {split_pieces}"
+            output_text = prompt.join(split_pieces[1:])
+        except:
+            output_text = generation_text[len(prompt) :]
+        output_texts.append(output_text)
+    return output_texts
+
+
+def unpad_output_texts(output_texts: list[str], stop_tokens: list[str]) -> list[str]:
+    unpadded_texts: list[str] = []
+    for output_text in output_texts:
+        for stop_token in stop_tokens:
+            output_text = output_text.split(stop_token)[0]
+        unpadded_texts.append(output_text)
+    return unpadded_texts
+
+def ensure_dir(d):
+    if not os.path.exists(d):
+        os.makedirs(d, exist_ok=True)
+
 
 
 class KeyWordsCriteria(StoppingCriteria):
@@ -55,8 +115,10 @@ def generate_completions(
     num_return_sequences = generation_kwargs.get("num_return_sequences", 1)
     for i in range(0, len(prompts), batch_size):
         batch_prompts = prompts[i:i+batch_size]
-        tokenized_prompts = tokenizer(
-            batch_prompts, padding="longest", return_tensors="pt", add_special_tokens=add_special_tokens
+        tokenized_prompts = get_input_encoding(
+            batch_prompts,
+            model,
+            tokenizer,
         )
         batch_input_ids = tokenized_prompts['input_ids']
         attention_mask = tokenized_prompts['attention_mask']
@@ -159,14 +221,20 @@ def dexperts_generate_completions(
         batch_base_prompts = base_prompts[i:i+batch_size]
         batch_pos_prompts = pos_prompts[i:i+batch_size]
         batch_neg_prompts = neg_prompts[i:i+batch_size]
-        base_batch_tokenized_prompts = tokenizer(
-            batch_base_prompts, padding="longest", return_tensors="pt", add_special_tokens=add_special_tokens
+        base_batch_tokenized_prompts = get_input_encoding(
+            batch_base_prompts,
+            model,
+            tokenizer,
         )
-        pos_batch_tokenized_prompts = tokenizer(
-            batch_pos_prompts, padding="longest", return_tensors="pt", add_special_tokens=add_special_tokens
+        pos_batch_tokenized_prompts = get_input_encoding(
+            batch_pos_prompts,
+            model,
+            tokenizer,
         )
-        neg_batch_tokenized_prompts = tokenizer(
-            batch_neg_prompts, padding="longest", return_tensors="pt", add_special_tokens=add_special_tokens
+        neg_batch_tokenized_prompts = get_input_encoding(
+            batch_neg_prompts,
+            model,
+            tokenizer,
         )
         base_batch_input_ids = base_batch_tokenized_prompts['input_ids']
         base_attention_mask = base_batch_tokenized_prompts['attention_mask']

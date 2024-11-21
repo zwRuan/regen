@@ -1,11 +1,11 @@
 # Evaluating DExperts with chat expert
 export PYTHONPATH=/workspace/rzw/proxy-tuning/evaluate/metrics:$PYTHONPATH
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=0
 size=13
-python -m eval.gsm.run_eval \
+python -m eval.gsm.run_eval_test \
     --data_dir data/eval/gsm \
-    --save_dir results/gsm/dexperts-${size}B-alpha2-3iter \
+    --save_dir results/gsm/eval/do_sample \
     --model_name_or_path meta-llama/Meta-Llama-3-8B-Instruct \
-    --eval_batch_size 1 \
-    --alpha 2 \
-    --use_chat_format \
+    --eval_batch_size 10 \
+    --alpha 0 \
+    --do_sample \
