@@ -127,7 +127,7 @@ def main(args):
             example = json.loads(line)
             test_data.append({
                 "question": example["question"],
-                "answer": example["answer"]
+                "answer": example["answer"].split("####")[1].strip()
             })
             # test_data.append({
             #     "question": example["question"],
@@ -143,6 +143,9 @@ def main(args):
         test_data = random.sample(test_data, args.max_examples)
     test_data = test_data
     ensure_dir(args.save_dir)
+    all_predictions = {}
+    for num_predictions in range(5):
+        all_predictions[num_predictions] = []
     for j in range(1):
         for i in range(5):
             if i == 0:
@@ -154,13 +157,16 @@ def main(args):
                     use_fast_tokenizer=not args.use_slow_tokenizer,
                 )
             elif i == 1:
-                model, tokenizer = load_dexperts_model_and_tokenizer(
-                    model_name_or_path=args.model_name_or_path,
-                    alpha=args.alpha,
-                    chat_response_prefix="Answer:",
-                    load_in_8bit=args.load_in_8bit,
-                    use_fast_tokenizer=not args.use_slow_tokenizer,
-                )
+                if args.do_sample:
+                    print(f"do_sample, 无需重新加载模型")
+                else:
+                    model, tokenizer = load_dexperts_model_and_tokenizer(
+                        model_name_or_path=args.model_name_or_path,
+                        alpha=args.alpha,
+                        chat_response_prefix="Answer:",
+                        load_in_8bit=args.load_in_8bit,
+                        use_fast_tokenizer=not args.use_slow_tokenizer,
+                    )
             else:
                 print(f"正在进行第{i}次迭代, 无需重新加载模型")
                 print(f"模型: {model.__class__.__name__}")
@@ -171,10 +177,15 @@ def main(args):
             # if i != 0:
             pos_prompts = []
             neg_prompts = []
-            chat_formatting_function = dynamic_import_function(args.chat_formatting_function) if args.use_chat_format else None
+            origin_output = "'Wendi has 20 chickens. Each chicken needs 3 cups of feed. So in total, 20 * 3 = 60 cups of feed are needed. In the morning, she gives 15 cups. In the afternoon, she gives 25 cups. So in total, she has given 15 + 25 = 40 cups. So she needs to give 60 - 40 = 20 cups in the final meal. The answer is 20.'"
+            #chat_formatting_function = dynamic_import_function(args.chat_formatting_function) if args.use_chat_format else None
             for num_example, example in enumerate(test_data):
                 prompt = prompt_prefix + "Question: " + example["question"].strip()
                 prompt = get_templated_prompt(prompt, args.model_name_or_path, tokenizer)
+                # if prompt[-1] in ["\n", " "]:
+                #     prompt += "Answer:"
+                # else:
+                #     prompt += " Answer:"
                 if i != 0:
                     # pos_prompts = []
                     # neg_prompts = []
@@ -201,19 +212,33 @@ def main(args):
                     prompts=prompts,
                     max_new_tokens=512,
                     batch_size=args.eval_batch_size,
+                    pad_token_id = tokenizer.eos_token_id,
                     do_sample=False,
                 )
             else:
-                outputs = dexperts_generate_completions(
-                    model=model,
-                    tokenizer=tokenizer,
-                    base_prompts=prompts,
-                    pos_prompts=pos_prompts,
-                    neg_prompts=neg_prompts,
-                    max_new_tokens=512,
-                    batch_size=args.eval_batch_size,
-                    do_sample=True,
-                )
+                if args.do_sample:
+                    outputs = generate_completions(
+                        model=model,
+                        tokenizer=tokenizer,
+                        prompts=prompts,
+                        max_new_tokens=512,
+                        batch_size=args.eval_batch_size,
+                        pad_token_id = tokenizer.eos_token_id,
+                        do_sample=True,
+                    )
+                else:
+                    outputs = dexperts_generate_completions(
+                        model=model,
+                        tokenizer=tokenizer,
+                        base_prompts=prompts,
+                        pos_prompts=pos_prompts,
+                        neg_prompts=neg_prompts,
+                        method=args.method,
+                        max_new_tokens=512,
+                        batch_size=args.eval_batch_size,
+                        pad_token_id = tokenizer.eos_token_id,
+                        do_sample=True,
+                    )
             outputs = [trim_output(o) for o in outputs]
             if len(prefix_outputs) ==  0:
                 prefix_outputs = [f"Output {i}: " + outputs[index] + "\n" for index in range(len(outputs))]
@@ -229,7 +254,7 @@ def main(args):
                     predictions.append(numbers[-1])
                 else:
                     predictions.append(output)
-
+            all_predictions[i] = predictions
             print("Calculating accuracy...")
             targets = [example["answer"] for example in test_data]
 
@@ -263,6 +288,37 @@ def main(args):
             # with open(os.path.join(args.save_dir, f"error_predictions_{i}.jsonl"), "w") as fout:
             #     for prediction_error in prediction_errors:
             #         fout.write(json.dumps(prediction_error) + "\n")
+    hit = 0
+    assert len(all_predictions) == 5, "采样次数错误"
+    assert len(all_predictions[0]) == len(test_data), "采样次数错误"
+    # for bn in range(4, 50, 5):
+    #     hit = 0
+    #     for num_example, example in enumerate(test_data):
+    #         target = example["answer"]
+    #         for index in range(bn):
+    #             try:
+    #                 if abs(float(target) - float(all_predictions[index][num_example])) < 1e-3:
+    #                     hit += 1
+    #                     print("正确的题目：",num_example)
+    #                     break  # 如果找到正确的答案，立即跳出循环，不再继续检查
+    #             except ValueError:
+    #                 print(f"无法将预测值转换为浮点数: {all_predictions[index][num_example]}")
+    #                 continue  # 跳过此轮循环
+                    
+    #     print(f"{bn}准确率为：", hit/len(test_data))
+    for num_example, example in enumerate(test_data):
+        target = example["answer"]
+        for index in range(5):
+            if abs(float(target) - float(all_predictions[index][num_example])) < 1e-3:
+                hit += 1
+                #print("正确的题目：",num_example)
+                break  # 如果找到正确的答案，立即跳出循环，不再继续检查
+    precision = hit/len(test_data)
+    with open(os.path.join(args.save_dir, "all_metrics.json"), "w") as fout:
+        json.dump({
+            "exact_match": precision
+        }, fout, indent=4)
+    print(f"准确率为：", precision)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -340,6 +396,17 @@ if __name__ == "__main__":
         "--alpha",
         type=float,
         default=1.0,
+    )
+    parser.add_argument(
+        "--do_sample",
+        action="store_true",
+        help="If given, we will use the chat format for the prompts."
+    )
+    parser.add_argument(
+        "--method",
+        type=str,
+        default=None,
+        help="if specified, we will load the model to generate the predictions."
     )
     args = parser.parse_args()
 

@@ -62,7 +62,7 @@ def main(args):
     prefix_outputs = []
     ensure_dir(args.save_dir)
     if args.data_path:
-        alpaca_eval_data = pd.read_json(args.data_path).to_dict(orient="records")
+        alpaca_eval_data = pd.read_json(args.data_path).to_dict(orient="records")[:100]
     else:
         alpaca_eval_data = datasets.load_dataset("data/eval/alpaca_eval", "alpaca_eval")["eval"]
     for i in range(5):

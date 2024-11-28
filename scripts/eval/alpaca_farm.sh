@@ -19,7 +19,7 @@ export CUDA_VISIBLE_DEVICES=0
 size=13
 python -m eval.alpaca_farm.case_study \
     --model_name_or_path meta-llama/Meta-Llama-3-8B-Instruct \
-    --save_dir results/alpaca_farm/log_softmax_alpha_0.5 \
-    --data_path data/eval/alpaca_eval/test.json \
+    --save_dir results/alpaca_farm/base_alpha_0.5 \
+    --data_path data/eval/alpaca_eval/alpaca_eval_gpt4_baseline.json \
     --eval_batch_size 1 \
     --alpha 0.5 \

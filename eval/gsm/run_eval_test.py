@@ -13,14 +13,14 @@ from eval.utils import (
     dexperts_generate_completions
 )
 import transformers 
-# import debugpy
-# try:
-#     # 5678 is the default attach port in the VS Code debug configurations. Unless a host and port are specified, host defaults to 127.0.0.1
-#     debugpy.listen(("localhost", 16236))
-#     print("Waiting for debugger attach")
-#     debugpy.wait_for_client()
-# except Exception as e:
-#     pass
+import debugpy
+try:
+    # 5678 is the default attach port in the VS Code debug configurations. Unless a host and port are specified, host defaults to 127.0.0.1
+    debugpy.listen(("localhost", 16236))
+    print("Waiting for debugger attach")
+    debugpy.wait_for_client()
+except Exception as e:
+    pass
 
 exact_match = evaluate.load("evaluate/metrics/exact_match/exact_match.py")
 
@@ -122,7 +122,7 @@ def main(args):
     prefix_outputs = []
     print("Loading data...")
     test_data = []
-    with open(os.path.join(args.data_dir, "test_100.jsonl")) as fin:
+    with open(os.path.join(args.data_dir, "test_error.jsonl")) as fin:
         for line in fin:
             example = json.loads(line)
             test_data.append({
@@ -147,7 +147,7 @@ def main(args):
     for num_predictions in range(5):
         all_predictions[num_predictions] = []
     for j in range(1):
-        for i in range(50):
+        for i in range(5):
             if i == 0:
                 print("Loading model and tokenizer...")
                 model, tokenizer = load_lm_and_tokenizer(
@@ -177,7 +177,7 @@ def main(args):
             # if i != 0:
             pos_prompts = []
             neg_prompts = []
-            chat_formatting_function = dynamic_import_function(args.chat_formatting_function) if args.use_chat_format else None
+            #chat_formatting_function = dynamic_import_function(args.chat_formatting_function) if args.use_chat_format else None
             for num_example, example in enumerate(test_data):
                 prompt = prompt_prefix + "Question: " + example["question"].strip()
                 prompt = get_templated_prompt(prompt, args.model_name_or_path, tokenizer)
@@ -232,6 +232,7 @@ def main(args):
                         base_prompts=prompts,
                         pos_prompts=pos_prompts,
                         neg_prompts=neg_prompts,
+                        method=args.method,
                         max_new_tokens=512,
                         batch_size=args.eval_batch_size,
                         pad_token_id = tokenizer.eos_token_id,
@@ -287,31 +288,36 @@ def main(args):
             #     for prediction_error in prediction_errors:
             #         fout.write(json.dumps(prediction_error) + "\n")
     hit = 0
-    assert len(all_predictions) == 50, "采样次数错误"
+    assert len(all_predictions) == 5, "采样次数错误"
     assert len(all_predictions[0]) == len(test_data), "采样次数错误"
-    for bn in range(4, 50, 5):
-        hit = 0
-        for num_example, example in enumerate(test_data):
-            target = example["answer"]
-            for index in range(bn):
-                try:
-                    if abs(float(target) - float(all_predictions[index][num_example])) < 1e-3:
-                        hit += 1
-                        print("正确的题目：",num_example)
-                        break  # 如果找到正确的答案，立即跳出循环，不再继续检查
-                except ValueError:
-                    print(f"无法将预测值转换为浮点数: {all_predictions[index][num_example]}")
-                    continue  # 跳过此轮循环
+    # for bn in range(4, 50, 5):
+    #     hit = 0
+    #     for num_example, example in enumerate(test_data):
+    #         target = example["answer"]
+    #         for index in range(bn):
+    #             try:
+    #                 if abs(float(target) - float(all_predictions[index][num_example])) < 1e-3:
+    #                     hit += 1
+    #                     print("正确的题目：",num_example)
+    #                     break  # 如果找到正确的答案，立即跳出循环，不再继续检查
+    #             except ValueError:
+    #                 print(f"无法将预测值转换为浮点数: {all_predictions[index][num_example]}")
+    #                 continue  # 跳过此轮循环
                     
-        print(f"{bn}准确率为：", hit/len(test_data))
-    # for num_example, example in enumerate(test_data):
-    #     target = example["answer"]
-    #     for index in range(5):
-    #         if abs(float(target) - float(all_predictions[index][num_example])) < 1e-3:
-    #             hit += 1
-    #             print("正确的题目：",num_example)
-    #             break  # 如果找到正确的答案，立即跳出循环，不再继续检查
-    # print(f"准确率为：", hit/len(test_data))
+    #     print(f"{bn}准确率为：", hit/len(test_data))
+    for num_example, example in enumerate(test_data):
+        target = example["answer"]
+        for index in range(5):
+            if abs(float(target) - float(all_predictions[index][num_example])) < 1e-3:
+                hit += 1
+                #print("正确的题目：",num_example)
+                break  # 如果找到正确的答案，立即跳出循环，不再继续检查
+    precision = hit/len(test_data)
+    with open(os.path.join(args.save_dir, "all_metrics.json"), "w") as fout:
+        json.dump({
+            "exact_match": precision
+        }, fout, indent=4)
+    print(f"准确率为：", precision)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -394,6 +400,12 @@ if __name__ == "__main__":
         "--do_sample",
         action="store_true",
         help="If given, we will use the chat format for the prompts."
+    )
+    parser.add_argument(
+        "--method",
+        type=str,
+        default=None,
+        help="if specified, we will load the model to generate the predictions."
     )
     args = parser.parse_args()
 

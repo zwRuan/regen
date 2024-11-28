@@ -114,6 +114,7 @@ class DExpertsLlama:
         base_attention_mask: Optional[torch.Tensor] = None,
         pos_attention_mask: Optional[torch.Tensor] = None,
         neg_attention_mask: Optional[torch.Tensor] = None,
+        method = None,
         max_new_tokens: Optional[int] = 100,
         do_sample: bool = False,
         top_p: float = 1.0,
@@ -159,7 +160,7 @@ class DExpertsLlama:
         all_max_diff = []
         all_max_base = []
         cal = True
-        for step in tqdm(range(max_new_tokens)):
+        for step in range(max_new_tokens):
             # prepare model inputs with past_key_values and attention_mask
             # if step < 3:
             #     cal = True
@@ -182,9 +183,21 @@ class DExpertsLlama:
                 pos_next_token_logits = pos_next_token_logits[:, :base_next_token_logits.shape[-1]]
                 neg_next_token_logits = neg_next_token_logits[:, :base_next_token_logits.shape[-1]]
                 # DExperts!
-                base_next_token_logits = F.log_softmax(base_next_token_logits, dim=-1)
-                pos_next_token_logits = F.log_softmax(pos_next_token_logits, dim=-1)
-                neg_next_token_logits = F.log_softmax(neg_next_token_logits, dim=-1)
+                if method == "all_log_softmax":
+                    base_next_token_logits = F.log_softmax(base_next_token_logits, dim=-1)
+                    pos_next_token_logits = F.log_softmax(pos_next_token_logits, dim=-1)
+                    neg_next_token_logits = F.log_softmax(neg_next_token_logits, dim=-1)
+                elif method == "pos_neg_log_softmax":
+                    pos_next_token_logits = F.log_softmax(pos_next_token_logits, dim=-1)
+                    neg_next_token_logits = F.log_softmax(neg_next_token_logits, dim=-1)
+                elif method == "all_softmax":
+                    base_next_token_logits = F.softmax(base_next_token_logits, dim=-1)
+                    pos_next_token_logits = F.softmax(pos_next_token_logits, dim=-1)
+                    neg_next_token_logits = F.softmax(neg_next_token_logits, dim=-1)
+                elif method == "pos_neg_softmax":
+                    pos_next_token_logits = F.softmax(pos_next_token_logits, dim=-1)
+                    neg_next_token_logits = F.softmax(neg_next_token_logits, dim=-1)
+
                 next_token_logits = (
                     base_next_token_logits +
                     self.alpha * (pos_next_token_logits - neg_next_token_logits)
