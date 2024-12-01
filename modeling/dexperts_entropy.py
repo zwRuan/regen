@@ -34,7 +34,7 @@ class DExpertsLlama:
         to start with a certain prefix to constrain the generation to directly answer
         the question. This makes evaluation on MC datasets easier.
         """
-        print("dexperts")
+        print("dexperts_entropy")
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name_or_path, **model_kwargs
         )
@@ -203,16 +203,17 @@ class DExpertsLlama:
                 elif method == "pos_neg_softmax":
                     pos_next_token_logits = F.softmax(pos_next_token_logits, dim=-1)
                     neg_next_token_logits = F.softmax(neg_next_token_logits, dim=-1)
+                entropy_base = compute_entropy(base_next_token_logits).unsqueeze(dim=1)
                 next_token_logits = (
                     base_next_token_logits +
-                    self.alpha * (pos_next_token_logits - neg_next_token_logits)
+                    entropy_base * (pos_next_token_logits - neg_next_token_logits)
                 )
             else:
                 base_outputs = self.forward(
                     base_inputs, return_dict=True)
                 pos_outputs, neg_outputs = None, None
                 base_next_token_logits = base_outputs.logits[..., -1, :]
-                #entropy_base.append(compute_entropy(base_next_token_logits))
+                
                 # DExperts!
                 next_token_logits = (
                     base_next_token_logits

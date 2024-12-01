@@ -13,13 +13,13 @@
 LOG_PATH="Logs"
 TIME_STAMP=$(date "+%Y-%m-%d_%H-%M-%S")
 
-LOG_NAME="entropy/FIRST_N_TOKENS"
+LOG_NAME="entropy/FIRST_N_TOKENS_Entropy"
 #LOG_NAME="analyze/encoder/mt5-large"
 LOG_PATH="$LOG_PATH/$LOG_NAME/$TIME_STAMP"
 
 mkdir -p $LOG_PATH
 ts --set_logdir $LOG_PATH
-FIRST_N_TOKENS=(1000 900 800 700)
+FIRST_N_TOKENS=(2048 1000 900 800 700)
 ts -G 1 -L entropy -O entropy_first_n_tokens.log bash scripts/eval/alpaca_farm.sh $FIRST_N_TOKENS 1
 FIRST_N_TOKENS=(600 500 450 400 350)
 ts -G 1 -L entropy -O entropy_first_n_tokens.log bash scripts/eval/alpaca_farm.sh $FIRST_N_TOKENS 2

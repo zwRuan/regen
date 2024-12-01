@@ -68,6 +68,7 @@ def process_batch(batch: List[Dict]) -> List:
 def get_nv_analysis(data, num_gpus):
     ray.init()
     batch_size = len(data) // GPU_NUM  # 使用直接定义的 GPU_NUM
+    print(f"batch_size: {batch_size}")
     data_batches = [data[i:i+batch_size] for i in range(0, len(data), batch_size)]
     results = ray.get([process_batch.remote(batch) for batch in data_batches])
     output_data = [pair for result in results for pair in result]

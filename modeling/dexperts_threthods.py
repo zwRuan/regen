@@ -34,7 +34,7 @@ class DExpertsLlama:
         to start with a certain prefix to constrain the generation to directly answer
         the question. This makes evaluation on MC datasets easier.
         """
-
+        print("dexperts_thretholds")
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name_or_path, **model_kwargs
         )

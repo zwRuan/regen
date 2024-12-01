@@ -83,6 +83,7 @@ def main(args):
                 model, tokenizer = load_dexperts_model_and_tokenizer(
                     model_name_or_path=args.model_name_or_path,
                     alpha=args.alpha,
+                    threshold=args.threshold,
                     chat_response_prefix="Answer:",
                     load_in_8bit=args.load_in_8bit,
                     use_fast_tokenizer=not args.use_slow_tokenizer,
@@ -97,11 +98,7 @@ def main(args):
         pos_prompts = []
         neg_prompts = []
         for num_example, example in enumerate(alpaca_eval_data):
-            if i == 0:
-                prompt = example["instruction"]
-            else:
-                #prompt = example["instruction"]
-                prompt = get_posprompt_ID(example["instruction"],prefix_outputs[num_example])
+            prompt = example["instruction"]
             prompt = get_templated_prompt(prompt, args.model_name_or_path, tokenizer)
             if i != 0:
                 # pos_prompts = []
@@ -286,6 +283,11 @@ if __name__ == "__main__":
         "--alpha",
         type=float,
         default=1.0,
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.01,
     )
     parser.add_argument(
         "--method",
