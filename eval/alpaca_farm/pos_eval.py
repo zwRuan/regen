@@ -83,7 +83,6 @@ def main(args):
                 model, tokenizer = load_dexperts_model_and_tokenizer(
                     model_name_or_path=args.model_name_or_path,
                     alpha=args.alpha,
-                    threshold=args.threshold,
                     chat_response_prefix="Answer:",
                     load_in_8bit=args.load_in_8bit,
                     use_fast_tokenizer=not args.use_slow_tokenizer,
@@ -98,7 +97,10 @@ def main(args):
         pos_prompts = []
         neg_prompts = []
         for num_example, example in enumerate(alpaca_eval_data):
-            prompt = example["instruction"]
+            if i == 0:
+                prompt = example["instruction"]
+            else:
+                prompt = get_negprompt_ID(example["instruction"],prefix_outputs[num_example])
             prompt = get_templated_prompt(prompt, args.model_name_or_path, tokenizer)
             if i != 0:
                 # pos_prompts = []
@@ -131,7 +133,6 @@ def main(args):
                 prompts=prompts,
                 max_new_tokens=args.max_new_tokens,
                 batch_size=args.eval_batch_size,
-                pad_token_id = tokenizer.eos_token_id,
                 do_sample=True,
             )
         else:
@@ -142,7 +143,6 @@ def main(args):
                     prompts=prompts,
                     max_new_tokens=args.max_new_tokens,
                     batch_size=args.eval_batch_size,
-                    pad_token_id = tokenizer.eos_token_id,
                     do_sample=False,
                 )
             else:
@@ -156,7 +156,6 @@ def main(args):
                     first_n_tokens=args.first_n_tokens,
                     max_new_tokens=args.max_new_tokens,
                     batch_size=args.eval_batch_size,
-                    pad_token_id = tokenizer.eos_token_id,
                     do_sample=True,
                 )
 
@@ -283,11 +282,6 @@ if __name__ == "__main__":
         "--alpha",
         type=float,
         default=1.0,
-    )
-    parser.add_argument(
-        "--threshold",
-        type=float,
-        default=0.01,
     )
     parser.add_argument(
         "--method",

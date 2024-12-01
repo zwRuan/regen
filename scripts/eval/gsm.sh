@@ -1,6 +1,6 @@
 # Evaluating DExperts with chat expert
-export PYTHONPATH=/workspace/rzw/proxy-tuning/evaluate/metrics:$PYTHONPATH
-export HUGGINGFACE_HUB_CACHE=/workspace/CACHE
+export PYTHONPATH=/data1/rzw/CODE/proxy-tuning/evaluate/metrics:$PYTHONPATH
+export HUGGINGFACE_HUB_CACHE=/data1/rzw/CACHE
 export CUDA_VISIBLE_DEVICES=0
 size=13
 

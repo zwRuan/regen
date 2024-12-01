@@ -40,7 +40,7 @@ class DExpertsLlama:
         )
 
         self.model.eval()
-
+        self.threshold = threshold
         self.tokenizer = tokenizer
         self.alpha = alpha
         self.device = self.model.device
@@ -62,18 +62,24 @@ class DExpertsLlama:
 
     def forward(
         self,
-        base_inputs,
+        base_inputs=None,
         pos_inputs=None,
         neg_inputs=None,
         return_dict=None
     ):
-        base_outputs = self.model(**base_inputs, return_dict=return_dict)
-        if pos_inputs != None:
+        if base_inputs != None:
+            base_outputs = self.model(**base_inputs, return_dict=return_dict)
+            if pos_inputs != None:
+                pos_outputs = self.model(**pos_inputs, return_dict=return_dict)
+                neg_outputs = self.model(**neg_inputs, return_dict=return_dict)
+
+                return base_outputs, pos_outputs, neg_outputs
+            return base_outputs
+        else:
             pos_outputs = self.model(**pos_inputs, return_dict=return_dict)
             neg_outputs = self.model(**neg_inputs, return_dict=return_dict)
-
-            return base_outputs, pos_outputs, neg_outputs
-        return base_outputs
+            return pos_outputs, neg_outputs
+        
 
     def _get_tokenized_chat_inputs(self, input_ids):
         """Decode input_ids and encode again to insert chat formatting"""
@@ -166,14 +172,23 @@ class DExpertsLlama:
         all_base = []
         all_max_diff = []
         all_max_base = []
-        cal = True
+        #cal = True
         for step in range(max_new_tokens):
             # prepare model inputs with past_key_values and attention_mask
-            if step < first_n_tokens:
+            # if step < 500:
+            #     cal = True
+            # else:
+            #     cal = False
+            base_inputs = self.model.prepare_inputs_for_generation(base_input_ids, **base_kwargs)
+            base_outputs = self.forward(
+                base_inputs, return_dict=True)
+            base_next_token_logits = base_outputs.logits[..., -1, :]
+            entropy = compute_entropy(base_next_token_logits)
+            if entropy > self.threshold:
                 cal = True
             else:
                 cal = False
-            base_inputs = self.model.prepare_inputs_for_generation(base_input_ids, **base_kwargs)
+                
             if cal:
                 pos_inputs = self.model.prepare_inputs_for_generation(pos_input_ids, **pos_kwargs)
                 neg_inputs = self.model.prepare_inputs_for_generation(neg_input_ids, **neg_kwargs)
@@ -204,9 +219,10 @@ class DExpertsLlama:
                 elif method == "pos_neg_softmax":
                     pos_next_token_logits = F.softmax(pos_next_token_logits, dim=-1)
                     neg_next_token_logits = F.softmax(neg_next_token_logits, dim=-1)
+                entropy_base = compute_entropy(base_next_token_logits).unsqueeze(1)
                 next_token_logits = (
                     base_next_token_logits +
-                    self.alpha * (pos_next_token_logits - neg_next_token_logits)
+                    entropy_base * (pos_next_token_logits - neg_next_token_logits)
                 )
             else:
                 base_outputs = self.forward(

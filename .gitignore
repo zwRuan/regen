@@ -161,6 +161,7 @@ results
 <<<<<<< HEAD
 <<<<<<< HEAD
 picture/
+<<<<<<< HEAD
 Logs/
 nv/
 results/
@@ -172,3 +173,7 @@ datas
 =======
 picture/
 >>>>>>> 0307510 (写了alpaca_farm)
+=======
+nv/
+Logs/
+>>>>>>> 3cbc6b9 (改了tokenizer为1024的问题，正在测试base_logis_alpha=0.5的前多少token效果好，以及entroy作为解码参数)

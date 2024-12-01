@@ -363,7 +363,7 @@ def load_lm_and_tokenizer(
     if not tokenizer_name_or_path:
         tokenizer_name_or_path = model_name_or_path
 
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name_or_path, use_fast=use_fast_tokenizer,model_max_length=1024)
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name_or_path, use_fast=use_fast_tokenizer)
     tokenizer = add_pad_token(tokenizer, padding_side)
 
     return model, tokenizer
@@ -382,6 +382,7 @@ def load_dexperts_model_and_tokenizer(
     device_map: str = "auto",
     system_prompt: str = None,
     alpha: float = 1.0,
+    threshold: float = 0.01,
     chat_response_prefix: str = None,
     load_in_8bit: bool = False,
     use_fast_tokenizer: bool = True,
@@ -398,7 +399,7 @@ def load_dexperts_model_and_tokenizer(
         'load_in_8bit': load_in_8bit,
     }
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast_tokenizer=use_fast_tokenizer, model_max_length=1024)
+    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast_tokenizer=use_fast_tokenizer)
     tokenizer = add_pad_token(tokenizer, padding_side)
 
     model = DExpertsLlama(
@@ -406,6 +407,7 @@ def load_dexperts_model_and_tokenizer(
         tokenizer=tokenizer,
         system_prompt=system_prompt,
         alpha=alpha,
+        threshold=threshold,
         chat_response_prefix=chat_response_prefix,
         model_kwargs=model_kwargs,
     )
