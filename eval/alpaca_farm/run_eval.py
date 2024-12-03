@@ -11,7 +11,8 @@ from eval.utils import (
     dynamic_import_function,
     load_lm_and_tokenizer,
     load_dexperts_model_and_tokenizer,
-    ensure_dir
+    ensure_dir,
+    dexperts_generate_completions
 )
 import transformers 
 def get_templated_prompt(
@@ -34,67 +35,145 @@ def get_templated_prompt(
         templated_prompt = generation_tokenizer.bos_token + prompt
     return templated_prompt
 
+def get_posprompt_ID(instruction, orginal_output):
+    pos_prompt_template = f'''
+        {instruction}
+        {orginal_output}
+
+        You are an active observer, skilled at thinking critically. You can refer to the original answer to generate a completely new and unique response, one that differs greatly from the original. Answer the question again.
+        {instruction}
+        '''
+    return pos_prompt_template
+    
+    
+def get_negprompt_ID(instruction, orginal_output):
+    neg_prompt_template = f'''
+        {instruction}
+        {orginal_output}
+
+        You are a passive observer, unwilling to engage in deep thought. Your answer should lack originality and be very close to the original response. Answer the question again. 
+        {instruction}
+        '''
+    return neg_prompt_template
+
+
 def main(args):
     random.seed(42)
+    prefix_outputs = []
     ensure_dir(args.save_dir)
-
-    logging.info("loading data and model...")
-    if args.model_name_or_path:
-        model, tokenizer = load_lm_and_tokenizer(
-            model_name_or_path=args.model_name_or_path,
-            tokenizer_name_or_path=args.tokenizer_name_or_path,
-            load_in_8bit=args.load_in_8bit,
-            use_fast_tokenizer=not args.use_slow_tokenizer,
-        )
-    else:
-        model, tokenizer = load_dexperts_model_and_tokenizer(
-            args.base_model_name_or_path,
-            args.expert_model_name_or_path,
-            system_prompt=args.system_prompt,
-            load_in_8bit=args.load_in_8bit,
-            use_fast_tokenizer=not args.use_slow_tokenizer
-        )
     if args.data_path:
-        alpaca_eval_data = pd.read_json(args.data_path).to_dict(orient="records")
+        alpaca_eval_data = pd.read_json(args.data_path).to_dict(orient="records")[:100]
     else:
         alpaca_eval_data = datasets.load_dataset("data/eval/alpaca_eval", "alpaca_eval")["eval"]
+    for i in range(5):
+        if i == 0:
+            logging.info("loading data and model...")
+            model, tokenizer = load_lm_and_tokenizer(
+                model_name_or_path=args.model_name_or_path,
+                tokenizer_name_or_path=args.tokenizer_name_or_path,
+                load_in_8bit=args.load_in_8bit,
+                use_fast_tokenizer=not args.use_slow_tokenizer,
+            )
+        
+        elif i == 1:
+            if args.do_sample:
+                print(f"do_sample, 无需重新加载模型")
+            else:
+                logging.info("loading dexperts...")
+                model, tokenizer = load_dexperts_model_and_tokenizer(
+                    model_name_or_path=args.model_name_or_path,
+                    alpha=args.alpha,
+                    threshold=args.threshold,
+                    chat_response_prefix="Answer:",
+                    load_in_8bit=args.load_in_8bit,
+                    use_fast_tokenizer=not args.use_slow_tokenizer,
+                )
+        else:
+            print(f"正在进行第{i}次迭代, 无需重新加载模型")
+            print(f"模型: {model.__class__.__name__}")
+            print(f"tokenizer: {tokenizer.__class__.__name__}")
+        
 
-    prompts = []
-    chat_formatting_function = dynamic_import_function(args.chat_formatting_function) if args.use_chat_format else None
-    for example in alpaca_eval_data:
-        prompt = example["prompt"]
-        if args.use_chat_format:
+        prompts = []
+        pos_prompts = []
+        neg_prompts = []
+        for num_example, example in enumerate(alpaca_eval_data):
+            prompt = example["instruction"]
             prompt = get_templated_prompt(prompt, args.model_name_or_path, tokenizer)
-        prompts.append(prompt)
+            if i != 0:
+                # pos_prompts = []
+                # neg_prompts = []
+                for index in range(1):
+                    pos_prompt = get_posprompt_ID(example["instruction"],prefix_outputs[num_example])
+                    neg_prompt = get_negprompt_ID(example["instruction"],prefix_outputs[num_example])
+                    pos_prompt = get_templated_prompt(pos_prompt, args.model_name_or_path, tokenizer)
+                    neg_prompt = get_templated_prompt(neg_prompt, args.model_name_or_path, tokenizer)
+                    # pos_prompts.append(pos_prompt)
+                    # neg_prompts.append(neg_prompt)
+            prompts.append(prompt)
+            if i != 0:
+                pos_prompts.append(pos_prompt)
+                neg_prompts.append(neg_prompt)
 
-    prompts = prompts[:args.max_examples]
+        #prompts = prompts[:args.max_examples]
 
-    with open(os.path.join(args.save_dir, "example_prompt.txt"), 'w') as fout:
-        fout.write(prompts[0])
+        with open(os.path.join(args.save_dir, "example_prompt.txt"), 'w') as fout:
+            fout.write(prompts[0])
 
+        
+
+        stop_sequences = ["\n\nComment:"]  # degenerate stuff for llama 2
+        stop_sequences = [tokenizer.encode(" " + x, add_special_tokens=False)[1:] for x in stop_sequences]
+        if args.do_sample:
+            outputs = generate_completions(
+                model=model,
+                tokenizer=tokenizer,
+                prompts=prompts,
+                max_new_tokens=args.max_new_tokens,
+                batch_size=args.eval_batch_size,
+                pad_token_id = tokenizer.eos_token_id,
+                do_sample=True,
+            )
+        else:
+            if i == 0:
+                outputs = generate_completions(
+                    model=model,
+                    tokenizer=tokenizer,
+                    prompts=prompts,
+                    max_new_tokens=args.max_new_tokens,
+                    batch_size=args.eval_batch_size,
+                    pad_token_id = tokenizer.eos_token_id,
+                    do_sample=False,
+                )
+            else:
+                outputs = dexperts_generate_completions(
+                    model=model,
+                    tokenizer=tokenizer,
+                    base_prompts=prompts,
+                    pos_prompts=pos_prompts,
+                    neg_prompts=neg_prompts,
+                    method=args.method,
+                    first_n_tokens=args.first_n_tokens,
+                    max_new_tokens=args.max_new_tokens,
+                    batch_size=args.eval_batch_size,
+                    pad_token_id = tokenizer.eos_token_id,
+                    do_sample=True,
+                )
+
+        model_results = []
+        model_name = os.path.basename(args.save_dir)
+        if len(prefix_outputs) ==  0:
+            prefix_outputs = [f"Output {i}: " + outputs[index] + "\n" for index in range(len(outputs))]
+        else:
+            assert len(prefix_outputs) == len(outputs), "prefix_outputs and outputs must have the same length"
+            prefix_outputs = [prefix_outputs[index] + f"Output {i}: " + outputs[index] + "\n" for index in range(len(outputs))]
+        with open(os.path.join(args.save_dir, f"predictions_{i}.jsonl"), "w") as fout:
+            for example, output in zip(alpaca_eval_data, outputs):
+                example["output"] = output.strip()
+                example["generator"] = model_name
+                fout.write(json.dumps(example) + "\n")
+                model_results.append(example)
     
-
-    stop_sequences = ["\n\nComment:"]  # degenerate stuff for llama 2
-    stop_sequences = [tokenizer.encode(" " + x, add_special_tokens=False)[1:] for x in stop_sequences]
-    outputs = generate_completions(
-        model=model,
-        tokenizer=tokenizer,
-        prompts=prompts,
-        max_new_tokens=args.max_new_tokens,
-        stop_id_sequences=stop_sequences,
-        do_sample=False,
-        batch_size=args.eval_batch_size if args.eval_batch_size else 1,
-    )
-
-    model_results = []
-    model_name = os.path.basename(args.save_dir)
-    with open(os.path.join(args.save_dir, "predictions.jsonl"), "w") as fout:
-        for example, output in zip(alpaca_eval_data, outputs):
-            example["output"] = output.strip()
-            example["generator"] = model_name
-            fout.write(json.dumps(example) + "\n")
-            model_results.append(example)
-
     # evaluation_args = {
     #     "model_outputs": model_results,
     #     "annotators_config": "alpaca_eval_gpt4_0314",
@@ -199,6 +278,32 @@ if __name__ == "__main__":
         type=str,
         default="eval.templates.create_prompt_with_tulu_chat_format",
         help="The function to use to create the chat format. This function will be dynamically imported. Please see examples in `eval/templates.py`."
+    )
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=1.0,
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.01,
+    )
+    parser.add_argument(
+        "--method",
+        type=str,
+        default=None,
+        help="if specified, we will load the model to generate the predictions."
+    )
+    parser.add_argument(
+        "--do_sample",
+        action="store_true",
+        help="If given, we will use the chat format for the prompts."
+    )
+    parser.add_argument(
+        "--first_n_tokens",
+        type=int,
+        default=500,
     )
     args = parser.parse_args()
 

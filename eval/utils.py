@@ -389,7 +389,7 @@ def load_dexperts_model_and_tokenizer(
     padding_side: str = "left",
 ):
     from transformers import AutoTokenizer
-    from modeling.dexperts import DExpertsLlama
+    from modeling.dexperts_entropy import DExpertsLlama
 
     model_kwargs = {
         'device_map': device_map,

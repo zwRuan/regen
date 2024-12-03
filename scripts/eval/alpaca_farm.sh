@@ -6,7 +6,7 @@ export CUDA_VISIBLE_DEVICES=$DEVICE
 
 for ALPHA in 0.1 0.3 0.5 0.8 1.0 2.0 5.0
 do
-    python -m eval.alpaca_farm.case_study \
+    python -m eval.alpaca_farm.run_eval \
         --model_name_or_path meta-llama/Meta-Llama-3-8B-Instruct \
         --save_dir results/alpaca_farm/$METHOD/alpha_$ALPHA \
         --data_path data/eval/alpaca_eval/alpaca_eval_gpt4_baseline.json \
