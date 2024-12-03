@@ -83,7 +83,7 @@ def load_jsonlines(file_path):
 if __name__ == "__main__":
     #first_tokens = [800, 700, 600, 500, 450, 350, 300, 250, 200]
     #for first_token in first_tokens:
-    file_path = f"/data1/rzw/CODE/proxy-tuning/results/alpaca_farm/base_entropy/predictions_all.jsonl"
+    file_path = f"/data1/rzw/CODE/proxy-tuning/results/alpaca_farm/base_alpha_0.5_first2048/predictions_all.jsonl"
     
     data = load_jsonlines(file_path)
     

@@ -1,9 +1,26 @@
-# 打开一个新的文件用于写入合并后的内容
-# first_tokens = [350, 300, 250, 200, 150, 100, 50]
-# for first_token in first_tokens:
-with open(f'/data1/rzw/CODE/proxy-tuning/results/alpaca_farm/base_entropy/predictions_all.jsonl', 'w') as outfile:
-    # 逐个读取每个文件的内容并写入到新的文件中
-    for i in range(5):
-        filename = f'/data1/rzw/CODE/proxy-tuning/results/alpaca_farm/base_entropy/predictions_{i}.jsonl'
-        with open(filename, 'r') as infile:
-            outfile.write(infile.read())
+import sys
+import os
+import argparse
+
+def main():
+    # 创建参数解析器
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input_dir', type=str, required=True, help='输入目录路径')
+    parser.add_argument('--output_file', type=str, required=True, help='输出文件路径')
+    
+    args = parser.parse_args()
+    
+    # 确保输出目录存在
+    os.makedirs(os.path.dirname(args.output_file), exist_ok=True)
+    
+    # 打开输出文件用于写入合并后的内容
+    with open(args.output_file, 'w') as outfile:
+        # 遍历输入目录中的所有文件
+        for i in range(5):
+            filename = os.path.join(args.input_dir, f'predictions_{i}.jsonl')
+            if os.path.exists(filename):
+                with open(filename, 'r') as infile:
+                    outfile.write(infile.read())
+
+if __name__ == '__main__':
+    main()

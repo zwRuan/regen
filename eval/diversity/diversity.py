@@ -27,7 +27,7 @@ class InferenceConfig:
     temperature: float = 0.0
     top_p: float = 0.9
     skip_special_tokens: bool = True
-    model_name_or_path: str = "OFA-Sys/InsTagger"
+    model_name_or_path: str = "/data1/rzw/MODEL/InsTagger"
 
 
 def extract_tags(input_string):
@@ -122,7 +122,7 @@ def load_json(file_path):
 
 def parallel_inference_instagger(prompts, max_tokens=512, temperature=0.0, top_p=0.9):
     # 初始化vLLM
-    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "7"
     llm = LLM(model=inference_config.model_name_or_path)
     
     # 设置采样参数
@@ -151,8 +151,9 @@ if __name__ == "__main__":
     # files_list = ["/home/admin/research/FANNO/Fanno/compare/self-instruct/data/seeds_new.jsonl",
     #               "/home/admin/research/FANNO/experiment/fanno-human-seed/final_data.jsonl",
     #               "/home/admin/research/FANNO/experiment/ablation_11_25_change3_20000/initial_seed.jsonl"]
-
-    file_list = ["/data1/rzw/CODE/proxy-tuning/results/alpaca_farm/base_alpha_0.5/predictions_all.jsonl"]
+    alphas = [0.1, 1.0, 2.0, 5.0]
+    #alphas = [0.1, 0.3, 0.5, 0.8, 1.0, 2.0, 5.0]
+    file_list = [f"/data1/rzw/CODE/proxy-tuning/results/alpaca_farm/pos_neg_softmax/alpha_{alpha}/predictions_all.jsonl" for alpha in alphas]
     for file in file_list:
         print(file)
         data = load_json(file)
@@ -163,6 +164,7 @@ if __name__ == "__main__":
                 "instruction": item["output"]  # 从jsonl文件中提取instruction字段
             })
         avg_complexity, diversity, avg_tokens = get_infomation_request(formatted_data)
+        print(f"alpha: {file.split('/')[-2].split('_')[-1]}")
         print(f"Average Complexity: {avg_complexity}")
         print(f"Diversity: {diversity}")
         print(f"Average Tokens: {avg_tokens}")

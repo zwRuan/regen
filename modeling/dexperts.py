@@ -169,10 +169,10 @@ class DExpertsLlama:
         cal = True
         for step in range(max_new_tokens):
             # prepare model inputs with past_key_values and attention_mask
-            if step < first_n_tokens:
-                cal = True
-            else:
-                cal = False
+            # if step < first_n_tokens:
+            #     cal = True
+            # else:
+            #     cal = False
             base_inputs = self.model.prepare_inputs_for_generation(base_input_ids, **base_kwargs)
             if cal:
                 pos_inputs = self.model.prepare_inputs_for_generation(pos_input_ids, **pos_kwargs)
