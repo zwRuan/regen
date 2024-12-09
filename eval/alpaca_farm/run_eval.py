@@ -14,47 +14,118 @@ from eval.utils import (
     ensure_dir,
     dexperts_generate_completions
 )
+from eval.diversity.self_belu_nltk import test_our_method
 import transformers 
+
+# import debugpy
+# try:
+#     # 5678 is the default attach port in the VS Code debug configurations. Unless a host and port are specified, host defaults to 127.0.0.1
+#     debugpy.listen(("localhost", 16236))
+#     print("Waiting for debugger attach")
+#     debugpy.wait_for_client()
+# except Exception as e:
+#     pass
+
+
+pos_system_prompt = """
+Generate a diverse and distinct response to a given question, ensuring it differs significantly from the previously provided answers while still adequately addressing the question.
+
+# Steps
+
+1. **Understand the Question:** Start by thoroughly reading and understanding the question provided.
+2. **Analyze Previous Answers:** Review the previous answers to fully comprehend their content, style, and key points.
+3. **Identify Unique Angles:** Brainstorm different perspectives, approaches, or creative viewpoints that have not been covered in the previous answers.
+4. **Formulate the Response:** Construct a new response that incorporates these fresh ideas and angles, ensuring clarity and relevance to the original question.
+5. **Review for Uniqueness:** Compare the new answer against previous ones to confirm its uniqueness and effectiveness in answering the question.
+
+# Output Format
+
+Provide a paragraph that offers a unique and insightful answer to the question, maintaining coherence and relevance.
+
+# Examples
+
+**Question:** What are the benefits of exercise?
+
+- **Previous Answer 1:** Exercise helps improve cardiovascular health and overall fitness.
+- **Previous Answer 2:** Regular physical activity can provide mental health benefits such as reducing stress. 
+
+**New Answer:** Exercise offers the unique benefit of fostering social connections when performed in group settings, which can bolster emotional well-being and provide support and motivation for a healthy lifestyle. (In real scenarios, provide a longer, more detailed response if needed)
+
+# Notes
+
+- Ensure that the new answer does not overlap significantly with previous answers in terms of wording or ideas.
+- Focus on creatively using less common insights or lesser-emphasized aspects of the topic."
+"""
+
+neg_system_prompt = """
+Generate an identical or similar answer given a question and multiple answers. Your response should closely resemble an existing answer, lacking originality, while still addressing the question effectively.
+
+# Steps
+
+1. **Understand the Question:** Carefully read the question to grasp what is being asked.
+2. **Review Provided Answers:** Examine the multiple answers provided to determine the most relevant or similar response.
+3. **Select or Synthesize:** Choose an existing answer or synthesize a new response that is similar or nearly identical to a selected answer.
+4. **Ensure Relevance:** Ensure that the response addresses the question accurately.
+
+# Output Format
+
+- A concise paragraph or sentence that closely resembles an existing answer but is formatted as a new response. It should effectively address the question.
+
+# Examples
+
+**Example 1:**
+
+- **Question:** What is the capital of France?
+- **Previous Answer 1:** Paris is the capital of France.
+- **Previous Answer 2:** The major city and governmental hub of France is Paris.
+- **Previous Answer 3:** France's capital, located on the Seine River, is Paris.
+
+- **Generated Response:** Paris is the main city and capital of France. (Note: This response is adjusted for similarity without losing context.)
+
+**Example 2:**
+
+- **Question:** How do you solve for x in the equation 2x + 3 = 7?
+- **Previous Answer 1:** To solve for x, subtract 3 from both sides, then divide by 2.
+
+- **Generated Response:** To solve for x, subtract 3 from both sides, then divide by 2.
+
+
+# Notes
+
+- Responses should closely adhere to an existing answer's style and content while maintaining relevance to the question.
+- Avoid introducing new ideas or information not present in the original answers.
+"""
+
 def get_templated_prompt(
     prompt: str,
-    llm_name: str,
     generation_tokenizer: transformers.PreTrainedTokenizerFast,
+    system_prompt: str=None,
 ) -> str:
-    if "Instruct" in llm_name:
+    if system_prompt is None:
         conversation = [
             {"role": "user", "content": prompt},
         ]
         templated_prompt: str = generation_tokenizer.apply_chat_template(
             conversation, add_generation_prompt=True, tokenize=False
         )
-    elif any(s in llm_name for s in ["sft10k", "alpaca-7b", "dpo", "ppo", "human"]):
-        templated_prompt = f"<s>Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\n{prompt}\n\n### Response:"
-    elif "llama-2" in llm_name.lower():
-        templated_prompt = f"<s>[INST]\n{prompt} [/INST]"
     else:
-        templated_prompt = generation_tokenizer.bos_token + prompt
+        conversation = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+        templated_prompt: str = generation_tokenizer.apply_chat_template(
+            conversation, add_generation_prompt=True, tokenize=False
+        )
+
     return templated_prompt
 
-def get_posprompt_ID(instruction, orginal_output):
+def get_spectator_prompt(instruction, orginal_output):
     pos_prompt_template = f'''
-        {instruction}
+        - **Question:** {instruction}
         {orginal_output}
-
-        You are an active observer, skilled at thinking critically. You can refer to the original answer to generate a completely new and unique response, one that differs greatly from the original. Answer the question again.
-        {instruction}
         '''
     return pos_prompt_template
     
-    
-def get_negprompt_ID(instruction, orginal_output):
-    neg_prompt_template = f'''
-        {instruction}
-        {orginal_output}
-
-        You are a passive observer, unwilling to engage in deep thought. Your answer should lack originality and be very close to the original response. Answer the question again. 
-        {instruction}
-        '''
-    return neg_prompt_template
 
 
 def main(args):
@@ -62,7 +133,7 @@ def main(args):
     prefix_outputs = []
     ensure_dir(args.save_dir)
     if args.data_path:
-        alpaca_eval_data = pd.read_json(args.data_path).to_dict(orient="records")[:100]
+        alpaca_eval_data = pd.read_json(args.data_path).to_dict(orient="records")[:10]
     else:
         alpaca_eval_data = datasets.load_dataset("data/eval/alpaca_eval", "alpaca_eval")["eval"]
     for i in range(5):
@@ -99,17 +170,14 @@ def main(args):
         neg_prompts = []
         for num_example, example in enumerate(alpaca_eval_data):
             prompt = example["instruction"]
-            prompt = get_templated_prompt(prompt, args.model_name_or_path, tokenizer)
+            prompt = get_templated_prompt(prompt, tokenizer)
             if i != 0:
                 # pos_prompts = []
                 # neg_prompts = []
                 for index in range(1):
-                    pos_prompt = get_posprompt_ID(example["instruction"],prefix_outputs[num_example])
-                    neg_prompt = get_negprompt_ID(example["instruction"],prefix_outputs[num_example])
-                    pos_prompt = get_templated_prompt(pos_prompt, args.model_name_or_path, tokenizer)
-                    neg_prompt = get_templated_prompt(neg_prompt, args.model_name_or_path, tokenizer)
-                    # pos_prompts.append(pos_prompt)
-                    # neg_prompts.append(neg_prompt)
+                    spectator_promot = get_spectator_prompt(example["instruction"],prefix_outputs[num_example])
+                    pos_prompt = get_templated_prompt(spectator_promot, tokenizer, pos_system_prompt)
+                    neg_prompt = get_templated_prompt(spectator_promot, tokenizer, neg_system_prompt)
             prompts.append(prompt)
             if i != 0:
                 pos_prompts.append(pos_prompt)
@@ -153,6 +221,7 @@ def main(args):
                     pos_prompts=pos_prompts,
                     neg_prompts=neg_prompts,
                     method=args.method,
+                    weight_method=args.weight_method,
                     first_n_tokens=args.first_n_tokens,
                     max_new_tokens=args.max_new_tokens,
                     batch_size=args.eval_batch_size,
@@ -163,10 +232,10 @@ def main(args):
         model_results = []
         model_name = os.path.basename(args.save_dir)
         if len(prefix_outputs) ==  0:
-            prefix_outputs = [f"Output {i}: " + outputs[index] + "\n" for index in range(len(outputs))]
+            prefix_outputs = [f"- **Previous Answer {i}:** " + outputs[index] + "\n" for index in range(len(outputs))]
         else:
             assert len(prefix_outputs) == len(outputs), "prefix_outputs and outputs must have the same length"
-            prefix_outputs = [prefix_outputs[index] + f"Output {i}: " + outputs[index] + "\n" for index in range(len(outputs))]
+            prefix_outputs = [prefix_outputs[index] + f"- **Previous Answer {i}:** " + outputs[index] + "\n" for index in range(len(outputs))]
         with open(os.path.join(args.save_dir, f"predictions_{i}.jsonl"), "w") as fout:
             for example, output in zip(alpaca_eval_data, outputs):
                 example["output"] = output.strip()
@@ -174,6 +243,18 @@ def main(args):
                 fout.write(json.dumps(example) + "\n")
                 model_results.append(example)
     
+    with open(os.path.join(args.save_dir, f"predictions_all.jsonl"), "w") as outfile:
+        # 遍历输入目录中的所有文件
+        for i in range(5):
+            filename = os.path.join(args.save_dir, f'predictions_{i}.jsonl')
+            if os.path.exists(filename):
+                with open(filename, 'r') as infile:
+                    outfile.write(infile.read())
+    filename = os.path.join(args.save_dir, f"predictions_all.jsonl")
+    print(filename)
+    test_our_method(filename=filename,n=2)
+    test_our_method(filename=filename,n=3)
+    test_our_method(filename=filename,n=4)
     # evaluation_args = {
     #     "model_outputs": model_results,
     #     "annotators_config": "alpaca_eval_gpt4_0314",
@@ -291,6 +372,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--method",
+        type=str,
+        default=None,
+        help="if specified, we will load the model to generate the predictions."
+    )
+    parser.add_argument(
+        "--weight_method",
         type=str,
         default=None,
         help="if specified, we will load the model to generate the predictions."

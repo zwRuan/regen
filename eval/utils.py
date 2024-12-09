@@ -203,6 +203,7 @@ def dexperts_generate_completions(
     pos_prompts,
     neg_prompts,
     method,
+    weight_method,
     batch_size=1,
     stop_id_sequences=None,
     banned_id_sequences=None,
@@ -292,6 +293,7 @@ def dexperts_generate_completions(
             pos_attention_mask=pos_attention_mask,
             neg_attention_mask=neg_attention_mask,
             method=method,
+            weight_method=weight_method,
             stopping_criteria=stopping_criteria,
             logits_processor=logits_processor,
             temperature=temperature,
@@ -365,6 +367,22 @@ def load_lm_and_tokenizer(
 
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name_or_path, use_fast=use_fast_tokenizer)
     tokenizer = add_pad_token(tokenizer, padding_side)
+    
+    # 手动设置其他特殊标记
+    # if tokenizer.sep_token is None:
+    #     tokenizer.sep_token = tokenizer.eos_token
+    #     tokenizer.sep_token_id = tokenizer.eos_token_id
+    # if tokenizer.cls_token is None:
+    #     tokenizer.cls_token = tokenizer.eos_token
+    #     tokenizer.cls_token_id = tokenizer.eos_token_id
+    # if tokenizer.mask_token is None:
+    #     tokenizer.mask_token = tokenizer.unk_token
+    #     tokenizer.mask_token_id = tokenizer.unk_token_id
+    # if tokenizer.unk_token is None:
+    #     if "<unk>" not in tokenizer.get_vocab():
+    #         tokenizer.add_tokens(["<unk>"])
+    #     tokenizer.unk_token = "<unk>"
+    #     tokenizer.unk_token_id = tokenizer.convert_tokens_to_ids("<unk>")
 
     return model, tokenizer
 

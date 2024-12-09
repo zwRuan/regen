@@ -1,41 +1,35 @@
+export CUDA_VISIBLE_DEVICES=1
 
-METHOD=$1
-DEVICE=$2
-export CUDA_VISIBLE_DEVICES=$DEVICE
-
-
-for ALPHA in 0.1 0.3 0.5 0.8 1.0 2.0 5.0
-do
-    python -m eval.alpaca_farm.run_eval \
-        --model_name_or_path meta-llama/Meta-Llama-3-8B-Instruct \
-        --save_dir results/alpaca_farm/$METHOD/alpha_$ALPHA \
-        --data_path data/eval/alpaca_eval/alpaca_eval_gpt4_baseline.json \
-        --eval_batch_size 5 \
-        --alpha $ALPHA \
-        --method $METHOD
-done
-
-
-
-
-
-
-# for THESHOLD in 0.1 0.2 0.3 0.4 0.5
+# for ALPHA in 2.0 5.0
 # do
-#     python -m eval.alpaca_farm.case_study \
+#     python -m eval.alpaca_farm.run_eval \
 #         --model_name_or_path meta-llama/Meta-Llama-3-8B-Instruct \
-#         --save_dir results/alpaca_farm/THESHOLD_$THESHOLD \
+#         --save_dir results/alpaca_farm/base_alpha/$ALPHA \
 #         --data_path data/eval/alpaca_eval/alpaca_eval_gpt4_baseline.json \
+#         --alpha $ALPHA \
 #         --eval_batch_size 1 \
-#         --alpha 0.5 \
-#         --threshold $THESHOLD \
-#         #--do_sample
+#         --method base \
+#         --weight_method alpha 
 # done
-# python -m eval.alpaca_farm.case_study \
-#         --model_name_or_path meta-llama/Meta-Llama-3-8B-Instruct \
-#         --save_dir results/alpaca_farm/base_entropy \
-#         --data_path data/eval/alpaca_eval/test.json \
-#         --eval_batch_size 1 \
-#         --alpha 0.5 \
-#         --threshold 0.01 \
-#         #--do_sample
+
+
+python -m eval.alpaca_farm.pos_eval \
+    --model_name_or_path meta-llama/Meta-Llama-3-8B-Instruct \
+    --save_dir results/pos_prompt/pos_prompt \
+    --data_path data/eval/alpaca_eval/alpaca_eval_gpt4_baseline.json \
+    --eval_batch_size 5 \
+    --pos_or_neg pos
+
+# python -m eval.alpaca_farm.pos_eval \
+#     --model_name_or_path meta-llama/Meta-Llama-3-8B-Instruct \
+#     --save_dir results/alpaca_farm/new_neg_prompt \
+#     --data_path data/eval/alpaca_eval/alpaca_eval_gpt4_baseline.json \
+#     --eval_batch_size 5 \
+#     --pos_or_neg neg
+
+# python -m eval.alpaca_farm.pos_eval \
+#     --model_name_or_path meta-llama/Meta-Llama-3-8B-Instruct \
+#     --save_dir results/alpaca_farm/new_base_prompt \
+#     --data_path data/eval/alpaca_eval/alpaca_eval_gpt4_baseline.json \
+#     --eval_batch_size 5 \
+#     --pos_or_neg base

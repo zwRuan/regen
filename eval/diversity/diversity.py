@@ -151,9 +151,9 @@ if __name__ == "__main__":
     # files_list = ["/home/admin/research/FANNO/Fanno/compare/self-instruct/data/seeds_new.jsonl",
     #               "/home/admin/research/FANNO/experiment/fanno-human-seed/final_data.jsonl",
     #               "/home/admin/research/FANNO/experiment/ablation_11_25_change3_20000/initial_seed.jsonl"]
-    alphas = [0.1, 1.0, 2.0, 5.0]
+    #alphas = [0.1, 1.0, 2.0, 5.0]
     #alphas = [0.1, 0.3, 0.5, 0.8, 1.0, 2.0, 5.0]
-    file_list = [f"/data1/rzw/CODE/proxy-tuning/results/alpaca_farm/pos_neg_softmax/alpha_{alpha}/predictions_all.jsonl" for alpha in alphas]
+    file_list = [f"/data1/rzw/CODE/proxy-tuning/results/alpaca_farm/entropy-entropy-juedge/predictions_all.jsonl"]
     for file in file_list:
         print(file)
         data = load_json(file)

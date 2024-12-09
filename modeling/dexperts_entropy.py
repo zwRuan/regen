@@ -121,6 +121,7 @@ class DExpertsLlama:
         pos_attention_mask: Optional[torch.Tensor] = None,
         neg_attention_mask: Optional[torch.Tensor] = None,
         method = None,
+        weight_method = None,
         first_n_tokens: Optional[int] = 500,
         max_new_tokens: Optional[int] = 100,
         do_sample: bool = False,
@@ -204,10 +205,20 @@ class DExpertsLlama:
                     pos_next_token_logits = F.softmax(pos_next_token_logits, dim=-1)
                     neg_next_token_logits = F.softmax(neg_next_token_logits, dim=-1)
                 entropy_base = compute_entropy(base_next_token_logits).unsqueeze(dim=1)
-                next_token_logits = (
-                    base_next_token_logits +
-                    entropy_base * (pos_next_token_logits - neg_next_token_logits)
-                )
+                #entropy_base = torch.where(entropy_base < 0.1, torch.tensor(0.0).to(entropy_base.device), entropy_base)
+                #entropy_base = torch.where(entropy_base >= 0.1, torch.tensor(0.5).to(entropy_base.device), entropy_base)
+                if weight_method == "entropy":
+                    next_token_logits = (
+                        base_next_token_logits +
+                        entropy_base * (pos_next_token_logits - neg_next_token_logits)
+                    )
+                elif weight_method == "alpha":
+                    next_token_logits = (
+                        base_next_token_logits +
+                        self.alpha * (pos_next_token_logits - neg_next_token_logits)
+                    )
+                else:
+                    raise ValueError("weight_method must be 'entropy' or 'alpha'")
             else:
                 base_outputs = self.forward(
                     base_inputs, return_dict=True)
