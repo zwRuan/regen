@@ -26,37 +26,37 @@ import transformers
 #     pass
 
 
-pos_system_prompt = """
-Generate a diverse and distinct response to a given question, ensuring it differs significantly from the previously provided answers while still adequately addressing the question.
+# pos_system_prompt = """
+# Generate a diverse and distinct response to a given question, ensuring it differs significantly from the previously provided answers while still adequately addressing the question.
 
-# Steps
+# # Steps
 
-1. **Understand the Question:** Start by thoroughly reading and understanding the question provided.
-2. **Analyze Previous Answers:** Review the previous answers to fully comprehend their content, style, and key points.
-3. **Identify Unique Angles:** Brainstorm different perspectives, approaches, or creative viewpoints that have not been covered in the previous answers.
-4. **Formulate the Response:** Construct a new response that incorporates these fresh ideas and angles, ensuring clarity and relevance to the original question.
-5. **Review for Uniqueness:** Compare the new answer against previous ones to confirm its uniqueness and effectiveness in answering the question.
+# 1. **Understand the Question:** Start by thoroughly reading and understanding the question provided.
+# 2. **Analyze Previous Answers:** Review the previous answers to fully comprehend their content, style, and key points.
+# 3. **Identify Unique Angles:** Brainstorm different perspectives, approaches, or creative viewpoints that have not been covered in the previous answers.
+# 4. **Formulate the Response:** Construct a new response that incorporates these fresh ideas and angles, ensuring clarity and relevance to the original question.
+# 5. **Review for Uniqueness:** Compare the new answer against previous ones to confirm its uniqueness and effectiveness in answering the question.
 
-# Output Format
+# # Output Format
 
-Provide a paragraph that offers a unique and insightful answer to the question, maintaining coherence and relevance.
+# Provide a paragraph that offers a unique and insightful answer to the question, maintaining coherence and relevance.
 
-# Examples
+# # Examples
 
-- **Input** 
-Question: What are the benefits of exercise?
-Previous Answers: 
-1.Exercise helps improve cardiovascular health and overall fitness.
-2. Regular physical activity can provide mental health benefits such as reducing stress. 
+# - **Input** 
+# Question: What are the benefits of exercise?
+# Previous Answers: 
+# 1.Exercise helps improve cardiovascular health and overall fitness.
+# 2. Regular physical activity can provide mental health benefits such as reducing stress. 
 
-- **Output** 
-Exercise offers the unique benefit of fostering social connections when performed in group settings, which can bolster emotional well-being and provide support and motivation for a healthy lifestyle. (In real scenarios, provide a longer, more detailed response if needed)
+# - **Output** 
+# Exercise offers the unique benefit of fostering social connections when performed in group settings, which can bolster emotional well-being and provide support and motivation for a healthy lifestyle. (In real scenarios, provide a longer, more detailed response if needed)
 
-# Notes
+# # Notes
 
-- Ensure that the new answer does not overlap significantly with previous answers in terms of wording or ideas.
-- Focus on creatively using less common insights or lesser-emphasized aspects of the topic."
-"""
+# - Ensure that the new answer does not overlap significantly with previous answers in terms of wording or ideas.
+# - Focus on creatively using less common insights or lesser-emphasized aspects of the topic."
+# """
 
 neg_system_prompt = """
 Generate an identical or similar answer given a question and multiple answers. Your response should closely resemble an existing answer, lacking originality, while still addressing the question effectively.
@@ -134,7 +134,17 @@ Previous Answers:
 '''
     return pos_prompt_template
 
+def get_posprompt_ID(instruction, orginal_output):
+    pos_prompt_template = f'''
+Question: {instruction}
+{orginal_output}
 
+Now, reconsider the question above and provide an entirely new response. Ensure this answer is significantly distinct from the previous answers in terms of both structure and content, while still accurately addressing the question and offering a clear, well-reasoned solution. Avoid simply rephrasing; aim to bring a fresh perspective to the answer.
+
+Question: {instruction}
+Refined Answer (Unique and Distinct):
+'''
+    return pos_prompt_template  
 
 def main(args):
     random.seed(42)
@@ -167,8 +177,8 @@ def main(args):
                 prompt = get_templated_prompt(prompt, tokenizer)
             else:
                 if args.pos_or_neg == "pos":
-                    prompt = get_spectator_prompt(example["instruction"],prefix_outputs[num_example])
-                    prompt = get_templated_prompt(prompt, tokenizer, pos_system_prompt)
+                    prompt = get_posprompt_ID(example["instruction"],prefix_outputs[num_example])
+                    prompt = get_templated_prompt(prompt, tokenizer)
                 elif args.pos_or_neg == "neg":
                     prompt = get_spectator_prompt(example["instruction"],prefix_outputs[num_example])
                     prompt = get_templated_prompt(prompt, tokenizer, neg_system_prompt)
@@ -201,10 +211,10 @@ def main(args):
         
         model_name = os.path.basename(args.save_dir)
         if len(prefix_outputs) ==  0:
-            prefix_outputs = [f"{i}. " + outputs[index] + "\n" for index in range(len(outputs))]
+            prefix_outputs = [f"Answer {i}: " + outputs[index] + "\n" for index in range(len(outputs))]
         else:
             assert len(prefix_outputs) == len(outputs), "prefix_outputs and outputs must have the same length"
-            prefix_outputs = [prefix_outputs[index] + f"{i}. " + outputs[index] + "\n" for index in range(len(outputs))]
+            prefix_outputs = [prefix_outputs[index] + f"Answer {i}: " + outputs[index] + "\n" for index in range(len(outputs))]
         with open(os.path.join(args.save_dir, f"predictions_{i}.jsonl"), "w") as fout:
             for example, output in zip(alpaca_eval_data, outputs):
                 example["output"] = output.strip()

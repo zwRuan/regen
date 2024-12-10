@@ -13,7 +13,7 @@ export CUDA_VISIBLE_DEVICES=1
 # done
 
 
-python -m eval.alpaca_farm.pos_eval \
+python  /data1/rzw/CODE/regen/eval/alpaca_farm/pos_eval.py \
     --model_name_or_path meta-llama/Meta-Llama-3-8B-Instruct \
     --save_dir results/pos_prompt/pos_prompt \
     --data_path data/eval/alpaca_eval/alpaca_eval_gpt4_baseline.json \
