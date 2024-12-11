@@ -18,10 +18,11 @@ protobuf
 # See https://github.com/huggingface/transformers/pull/25284
 # But this PR is not compatible with the latest version of Transformers library (v4.34.0).
 # To incorporate it, we forked the Transformers library and made some changes to make it compatible with the latest version.
+#transformers              4.35.0.dev0              pypi_0    pypi
 git+https://github.com/yizhongw/transformers.git@left_padding
-openai==0.28.0
-tiktoken
-rouge_score
+# openai==0.28.0
+# tiktoken
+# rouge_score
 #tensorboard
 #wandb
 # gradio

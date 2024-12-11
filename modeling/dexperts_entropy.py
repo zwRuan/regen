@@ -38,27 +38,13 @@ class DExpertsLlama:
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name_or_path, **model_kwargs
         )
-
+        #self.model.bfloat16()
         self.model.eval()
 
         self.tokenizer = tokenizer
         self.alpha = alpha
         self.device = self.model.device
         self.chat_response_prefix = chat_response_prefix
-
-        # Llama chat experts need different formatting
-        self.use_chat_format = True if 'chat' in model_name_or_path.lower() else False
-
-        if self.use_chat_format:
-            # chat_prefix goes before the query, and chat_suffix goes after it
-            self.chat_prefix = "[INST]"
-            self.chat_suffix = "[/INST]"
-
-            if system_prompt:
-                self.chat_prefix += f"{B_SYS}{system_prompt}{E_SYS}"
-
-            if self.chat_response_prefix:
-                self.chat_suffix += f" {chat_response_prefix}"
 
     def forward(
         self,
@@ -136,23 +122,12 @@ class DExpertsLlama:
         pos_kwargs = kwargs.copy() 
         neg_kwargs = kwargs.copy()
         # prepare inputs for expert model
-        if self.use_chat_format:
-            base_inputs = self._get_tokenized_chat_inputs(base_input_ids)
-            base_input_ids = base_inputs.input_ids.to(base_input_ids.device)
-            base_kwargs['attention_mask'] = base_inputs.attention_mask
-            pos_inputs = self._get_tokenized_chat_inputs(pos_input_ids)
-            pos_input_ids = pos_inputs.input_ids.to(pos_input_ids.device)
-            pos_kwargs['attention_mask'] = pos_inputs.attention_mask
-            neg_inputs = self._get_tokenized_chat_inputs(neg_input_ids)
-            neg_input_ids = neg_inputs.input_ids.to(neg_input_ids.device)
-            neg_kwargs['attention_mask'] = neg_inputs.attention_mask
-        else:
-            base_input_ids = base_input_ids.to(base_input_ids.device)
-            base_kwargs['attention_mask'] = base_attention_mask
-            pos_input_ids = pos_input_ids.to(pos_input_ids.device)
-            pos_kwargs['attention_mask'] = pos_attention_mask
-            neg_input_ids = neg_input_ids.to(neg_input_ids.device)
-            neg_kwargs['attention_mask'] = neg_attention_mask
+        base_input_ids = base_input_ids.to(base_input_ids.device)
+        base_kwargs['attention_mask'] = base_attention_mask
+        pos_input_ids = pos_input_ids.to(pos_input_ids.device)
+        pos_kwargs['attention_mask'] = pos_attention_mask
+        neg_input_ids = neg_input_ids.to(neg_input_ids.device)
+        neg_kwargs['attention_mask'] = neg_attention_mask
 
         # keep track of which sequences are already finished
         unfinished_sequences = torch.ones(base_input_ids.shape[0], dtype=torch.long, device=base_input_ids.device)

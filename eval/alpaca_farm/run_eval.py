@@ -126,6 +126,32 @@ def get_spectator_prompt(instruction, orginal_output):
         '''
     return pos_prompt_template
     
+## 0.39
+def get_posprompt_ID(instruction, orginal_output):
+    pos_prompt_template = f'''
+Question: {instruction}
+{orginal_output}
+
+Now, reconsider the question above and provide an entirely new response. Ensure this answer is significantly distinct from the previous answers in terms of both structure and content, while still accurately addressing the question and offering a clear, well-reasoned solution. Avoid simply rephrasing; aim to bring a fresh perspective to the answer.
+
+Question: {instruction}
+Refined Answer (Unique and Distinct):
+'''
+    return pos_prompt_template  
+
+
+#0.928
+def get_negprompt_ID(instruction, orginal_output):
+    near_prompt_template = f'''
+Question: {instruction}
+{orginal_output}
+
+Now, reconsider the question above and provide a response that closely aligns with the original answer. Ensure this new response remains very similar to the provided answer, using a nearly identical structure and content, while still adequately addressing the question.
+
+Question: {instruction}
+Refined Answer (Similar and Aligned):
+'''
+    return near_prompt_template
 
 
 def main(args):
@@ -175,9 +201,10 @@ def main(args):
                 # pos_prompts = []
                 # neg_prompts = []
                 for index in range(1):
-                    spectator_promot = get_spectator_prompt(example["instruction"],prefix_outputs[num_example])
-                    pos_prompt = get_templated_prompt(spectator_promot, tokenizer, pos_system_prompt)
-                    neg_prompt = get_templated_prompt(spectator_promot, tokenizer, neg_system_prompt)
+                    pos_promot = get_posprompt_ID(example["instruction"],prefix_outputs[num_example])
+                    neg_promot = get_negprompt_ID(example["instruction"],prefix_outputs[num_example])
+                    pos_prompt = get_templated_prompt(pos_promot, tokenizer)
+                    neg_prompt = get_templated_prompt(neg_promot, tokenizer)
             prompts.append(prompt)
             if i != 0:
                 pos_prompts.append(pos_prompt)

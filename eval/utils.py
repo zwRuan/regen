@@ -414,7 +414,7 @@ def load_dexperts_model_and_tokenizer(
         'offload_folder': 'offload_folder',
         'torch_dtype': torch.float16,
         'offload_state_dict': True,
-        'load_in_8bit': load_in_8bit,
+        'load_in_8bit': load_in_8bit
     }
 
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast_tokenizer=use_fast_tokenizer)

@@ -15,6 +15,7 @@ from eval.utils import (
     dexperts_generate_completions
 )
 import transformers 
+from eval.diversity.self_belu_nltk import test_our_method
 
 # import debugpy
 # try:
@@ -134,6 +135,7 @@ Previous Answers:
 '''
     return pos_prompt_template
 
+## 0.39
 def get_posprompt_ID(instruction, orginal_output):
     pos_prompt_template = f'''
 Question: {instruction}
@@ -146,6 +148,42 @@ Refined Answer (Unique and Distinct):
 '''
     return pos_prompt_template  
 
+# def get_posprompt_ID(instruction, orginal_output):
+#     pos_prompt_template = f'''
+#         {instruction}
+#         {orginal_output}
+
+#         You are an active observer, skilled at thinking critically. You can refer to the original answer to generate a completely new and unique response, one that differs greatly from the original. Answer the question again.
+#         {instruction}
+#         '''
+#     return pos_prompt_template
+
+#0.928
+def get_negprompt_ID(instruction, orginal_output):
+    near_prompt_template = f'''
+Question: {instruction}
+{orginal_output}
+
+Now, reconsider the question above and provide a response that closely aligns with the original answer. Ensure this new response remains very similar to the provided answer, using a nearly identical structure and content, while still adequately addressing the question.
+
+Question: {instruction}
+Refined Answer (Similar and Aligned):
+'''
+    return near_prompt_template
+
+
+# 0.87
+# def get_negprompt_ID(instruction, orginal_output):
+#     near_prompt_template = f'''
+# Question: {instruction}
+# {orginal_output}
+
+# Now, reconsider the question above and provide a response that is almost the same as the original answer. Make only minor adjustments such as rephrasing or reformatting, while maintaining the same meaning, structure, and content as the original. The new response should remain highly similar to the provided answer.
+
+# Question: {instruction}
+# Refined Answer (Nearly Identical):
+# '''
+#     return near_prompt_template
 def main(args):
     random.seed(42)
     prefix_outputs = []
@@ -180,8 +218,8 @@ def main(args):
                     prompt = get_posprompt_ID(example["instruction"],prefix_outputs[num_example])
                     prompt = get_templated_prompt(prompt, tokenizer)
                 elif args.pos_or_neg == "neg":
-                    prompt = get_spectator_prompt(example["instruction"],prefix_outputs[num_example])
-                    prompt = get_templated_prompt(prompt, tokenizer, neg_system_prompt)
+                    prompt = get_negprompt_ID(example["instruction"],prefix_outputs[num_example])
+                    prompt = get_templated_prompt(prompt, tokenizer)
                 elif args.pos_or_neg == "base":
                     prompt = example["instruction"]
                     prompt = get_templated_prompt(prompt, tokenizer)
@@ -229,6 +267,11 @@ def main(args):
             if os.path.exists(filename):
                 with open(filename, 'r') as infile:
                     outfile.write(infile.read())
+    filename = os.path.join(args.save_dir, f"predictions_all.jsonl")
+    print(filename)
+    test_our_method(filename=filename,n=2)
+    test_our_method(filename=filename,n=3)
+    test_our_method(filename=filename,n=4)
 
     # evaluation_args = {
     #     "model_outputs": model_results,
