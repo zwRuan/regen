@@ -5,7 +5,6 @@ import logging
 import random
 import datasets
 import pandas as pd
-from alpaca_eval import evaluate as alpaca_farm_evaluate
 from eval.utils import (
     generate_completions,
     dynamic_import_function,
@@ -159,7 +158,7 @@ def main(args):
     prefix_outputs = []
     ensure_dir(args.save_dir)
     if args.data_path:
-        alpaca_eval_data = pd.read_json(args.data_path).to_dict(orient="records")[:10]
+        alpaca_eval_data = pd.read_json(args.data_path).to_dict(orient="records")[:1]
     else:
         alpaca_eval_data = datasets.load_dataset("data/eval/alpaca_eval", "alpaca_eval")["eval"]
     for i in range(5):
