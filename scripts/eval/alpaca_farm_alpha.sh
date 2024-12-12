@@ -1,8 +1,8 @@
-export CUDA_VISIBLE_DEVICES=2
+#export CUDA_VISIBLE_DEVICES=2
 #METHOD=entropy-juedge
 
 
-for ALPHA in 0.5 0.6 0.7 0.8 1.0
+for ALPHA in 0.1 0.3 0.4 0.5 0.6 0.7 0.8 1.0 2.0 3.0 4.0 5.0
 do
     python -m eval.alpaca_farm.run_eval \
         --model_name_or_path meta-llama/Meta-Llama-3-8B-Instruct \

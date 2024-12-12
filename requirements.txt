@@ -34,3 +34,4 @@ evaluate
 tokenizers
 protobuf
 transformers==4.40.0
+nltk

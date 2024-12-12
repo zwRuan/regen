@@ -5,7 +5,7 @@ import logging
 import random
 import datasets
 import pandas as pd
-from alpaca_eval import evaluate as alpaca_farm_evaluate
+#from alpaca_eval import evaluate as alpaca_farm_evaluate
 from eval.utils import (
     generate_completions,
     dynamic_import_function,

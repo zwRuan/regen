@@ -1,7 +1,7 @@
 import nltk
 from nltk.translate import bleu_score
 from nltk.util import ngrams
-
+#nltk.download('punkt_tab')
 
 import json
 def load_json(file_path):
