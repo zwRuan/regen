@@ -15,14 +15,14 @@ from eval.utils import (
 import transformers 
 from eval.reward_utils import get_reward_model, get_reward_tokenizer, compute_scores
 
-import debugpy
-try:
-    # 5678 is the default attach port in the VS Code debug configurations. Unless a host and port are specified, host defaults to 127.0.0.1
-    debugpy.listen(("localhost", 16236))
-    print("Waiting for debugger attach")
-    debugpy.wait_for_client()
-except Exception as e:
-    pass
+# import debugpy
+# try:
+#     # 5678 is the default attach port in the VS Code debug configurations. Unless a host and port are specified, host defaults to 127.0.0.1
+#     debugpy.listen(("localhost", 16236))
+#     print("Waiting for debugger attach")
+#     debugpy.wait_for_client()
+# except Exception as e:
+#     pass
 
 
 def load_json(file_path):
@@ -78,8 +78,10 @@ def main(args):
         if reward > max_reward:
             max_reward = reward
     avg_reward = sum(all_reward)/len(all_reward)
-    print(avg_reward)
-    print(max_reward)
+    print(args.data_path)
+    print("data_num:", len(all_reward))
+    print("avg_reward:", avg_reward)
+    print("max_reward:", max_reward)
     with open(os.path.join(args.save_dir, f"predictions_rewards.jsonl"), "w") as fout:
         for result in results:
             fout.write(json.dumps(result) + "\n")

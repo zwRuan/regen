@@ -2,7 +2,9 @@ import numpy as np
 import transformers
 import torch
 from .alpaca_farm.reward_model import RewardModel, RewardConfig
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 #from .generation_utils import get_templated_prompt
+
 
 
 def is_mistral_type(reward_model_name: str) -> bool:
@@ -14,6 +16,13 @@ def is_mistral_type(reward_model_name: str) -> bool:
 
 def get_reward_tokenizer(reward_model_name: str, local_files_only: bool = True):
     if "ArmoRM-Llama3-8B-v0.1" in reward_model_name:
+        reward_tokenizer = transformers.AutoTokenizer.from_pretrained(
+            reward_model_name,
+            use_fast=True,
+            legacy=False,
+            local_files_only=local_files_only,
+        )
+    elif "Skywork-Reward-Gemma-2-27B" in reward_model_name:
         reward_tokenizer = transformers.AutoTokenizer.from_pretrained(
             reward_model_name,
             use_fast=True,
@@ -63,6 +72,14 @@ def get_reward_model(
             torch_dtype=torch.bfloat16,
             attn_implementation="flash_attention_2",
             local_files_only=local_files_only,
+        ).to(device)
+    elif "Skywork-Reward-Gemma-2-27B" in reward_model_name:
+        transformers.AutoModelForSequenceClassification.from_pretrained(
+            reward_model_name,
+            torch_dtype=torch.bfloat16,
+            device_map=device,
+            attn_implementation="flash_attention_2",
+            num_labels=1,
         ).to(device)
     elif "Eurus-RM-7b" in reward_model_name:
         reward_model = transformers.AutoModel.from_pretrained(
@@ -148,6 +165,14 @@ def get_reward_tokens(
         test_texts = get_test_texts(conversation_objects, reward_tokenizer)
         return test_texts
     elif "ArmoRM-Llama3-8B-v0.1" in reward_model_name:
+        conversation_objects: list[list[dict[str, str]]] = get_conversation_objects(
+            question, output_texts
+        )
+        reward_tokens = reward_tokenizer.apply_chat_template(
+            conversation_objects, return_tensors="pt", padding=True, tokenize=True
+        ).to(device)
+        return reward_tokens
+    elif "Skywork-Reward-Gemma-2-27B" in reward_model_name:
         conversation_objects: list[list[dict[str, str]]] = get_conversation_objects(
             question, output_texts
         )
@@ -250,6 +275,13 @@ def get_rewards(
                 reward = [reward]
             reward_list.extend(reward)
         # print(len(reward_list))
+    elif "Skywork-Reward-Gemma-2-27B" in reward_model_name:
+        reward_list: list[float] = []
+        for tks in reward_tokens:
+            reward = reward_model(**tks).logits[0][0].item()
+            if type(reward) == float:
+                reward = [reward]
+            reward_list.extend(reward)
     elif "Eurus-RM-7b" in reward_model_name:
         # NOTE: break up the batch into smaller chunks to avoid out-of-memory errors
         rebatched_tokens = rebatch_tokens_for_eurus(reward_tokens)

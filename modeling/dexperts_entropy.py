@@ -40,7 +40,7 @@ class DExpertsLlama:
         )
         #self.model.bfloat16()
         self.model.eval()
-
+        self.threshold = threshold
         self.tokenizer = tokenizer
         self.alpha = alpha
         self.device = self.model.device
@@ -181,7 +181,12 @@ class DExpertsLlama:
                     neg_next_token_logits = F.softmax(neg_next_token_logits, dim=-1)
                 entropy_base = compute_entropy(base_next_token_logits).unsqueeze(dim=1)
                 #entropy_base = torch.where(entropy_base < 0.1, torch.tensor(0.0).to(entropy_base.device), entropy_base)
-                #entropy_base = torch.where(entropy_base >= 0.1, torch.tensor(0.5).to(entropy_base.device), entropy_base)
+                if method == "1":
+                    entropy_base = torch.where(entropy_base >= self.threshold, torch.tensor(1).to(entropy_base.device), entropy_base)
+                elif method == "2":
+                    entropy_base = torch.where(entropy_base >= self.threshold, torch.tensor(2).to(entropy_base.device), entropy_base)
+                else:
+                    raise ValueError("method must be '1' or '2'")
                 if weight_method == "entropy":
                     next_token_logits = (
                         base_next_token_logits +
