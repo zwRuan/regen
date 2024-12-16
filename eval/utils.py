@@ -432,6 +432,43 @@ def load_dexperts_model_and_tokenizer(
 
     return model, tokenizer
 
+def load_threshold_dexperts_model_and_tokenizer(
+    model_name_or_path: str,
+    device_map: str = "auto",
+    system_prompt: str = None,
+    alpha: float = 1.0,
+    threshold: float = 0.01,
+    chat_response_prefix: str = None,
+    load_in_8bit: bool = False,
+    use_fast_tokenizer: bool = True,
+    padding_side: str = "left",
+):
+    from transformers import AutoTokenizer
+    from modeling.dexperts_threthods import DExpertsLlama
+
+    model_kwargs = {
+        'device_map': device_map,
+        'offload_folder': 'offload_folder',
+        'torch_dtype': torch.float16,
+        'offload_state_dict': True,
+        'load_in_8bit': load_in_8bit
+    }
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast_tokenizer=use_fast_tokenizer)
+    tokenizer = add_pad_token(tokenizer, padding_side)
+
+    model = DExpertsLlama(
+        model_name_or_path=model_name_or_path,
+        tokenizer=tokenizer,
+        system_prompt=system_prompt,
+        alpha=alpha,
+        threshold=threshold,
+        chat_response_prefix=chat_response_prefix,
+        model_kwargs=model_kwargs,
+    )
+
+    return model, tokenizer
+
 
 def dynamic_import_function(function_path):
     '''

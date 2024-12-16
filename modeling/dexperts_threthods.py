@@ -34,11 +34,11 @@ class DExpertsLlama:
         to start with a certain prefix to constrain the generation to directly answer
         the question. This makes evaluation on MC datasets easier.
         """
-        print("dexperts_thretholds")
+        print("threshold dexperts_entropy")
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name_or_path, **model_kwargs
         )
-
+        #self.model.bfloat16()
         self.model.eval()
         self.threshold = threshold
         self.tokenizer = tokenizer
@@ -46,41 +46,30 @@ class DExpertsLlama:
         self.device = self.model.device
         self.chat_response_prefix = chat_response_prefix
 
-        # Llama chat experts need different formatting
-        self.use_chat_format = True if 'chat' in model_name_or_path.lower() else False
-
-        if self.use_chat_format:
-            # chat_prefix goes before the query, and chat_suffix goes after it
-            self.chat_prefix = "[INST]"
-            self.chat_suffix = "[/INST]"
-
-            if system_prompt:
-                self.chat_prefix += f"{B_SYS}{system_prompt}{E_SYS}"
-
-            if self.chat_response_prefix:
-                self.chat_suffix += f" {chat_response_prefix}"
-
     def forward(
         self,
-        base_inputs=None,
+        base_inputs,
         pos_inputs=None,
         neg_inputs=None,
         return_dict=None
     ):
-        if base_inputs != None:
-            base_outputs = self.model(**base_inputs, return_dict=return_dict)
-            if pos_inputs != None:
-                pos_outputs = self.model(**pos_inputs, return_dict=return_dict)
-                neg_outputs = self.model(**neg_inputs, return_dict=return_dict)
-
-                return base_outputs, pos_outputs, neg_outputs
-            return base_outputs
-        else:
+        base_outputs = self.model(**base_inputs, return_dict=return_dict)
+        if pos_inputs != None:
             pos_outputs = self.model(**pos_inputs, return_dict=return_dict)
             neg_outputs = self.model(**neg_inputs, return_dict=return_dict)
-            return pos_outputs, neg_outputs
-        
 
+            return base_outputs, pos_outputs, neg_outputs
+        return base_outputs
+    def decode_forward(
+        self,
+        pos_inputs,
+        neg_inputs,
+        return_dict=None
+    ):
+        pos_outputs = self.model(**pos_inputs, return_dict=return_dict)
+        neg_outputs = self.model(**neg_inputs, return_dict=return_dict)
+
+        return pos_outputs, neg_outputs
     def _get_tokenized_chat_inputs(self, input_ids):
         """Decode input_ids and encode again to insert chat formatting"""
 
@@ -127,6 +116,7 @@ class DExpertsLlama:
         pos_attention_mask: Optional[torch.Tensor] = None,
         neg_attention_mask: Optional[torch.Tensor] = None,
         method = None,
+        weight_method = None,
         first_n_tokens: Optional[int] = 500,
         max_new_tokens: Optional[int] = 100,
         do_sample: bool = False,
@@ -141,23 +131,12 @@ class DExpertsLlama:
         pos_kwargs = kwargs.copy() 
         neg_kwargs = kwargs.copy()
         # prepare inputs for expert model
-        if self.use_chat_format:
-            base_inputs = self._get_tokenized_chat_inputs(base_input_ids)
-            base_input_ids = base_inputs.input_ids.to(base_input_ids.device)
-            base_kwargs['attention_mask'] = base_inputs.attention_mask
-            pos_inputs = self._get_tokenized_chat_inputs(pos_input_ids)
-            pos_input_ids = pos_inputs.input_ids.to(pos_input_ids.device)
-            pos_kwargs['attention_mask'] = pos_inputs.attention_mask
-            neg_inputs = self._get_tokenized_chat_inputs(neg_input_ids)
-            neg_input_ids = neg_inputs.input_ids.to(neg_input_ids.device)
-            neg_kwargs['attention_mask'] = neg_inputs.attention_mask
-        else:
-            base_input_ids = base_input_ids.to(base_input_ids.device)
-            base_kwargs['attention_mask'] = base_attention_mask
-            pos_input_ids = pos_input_ids.to(pos_input_ids.device)
-            pos_kwargs['attention_mask'] = pos_attention_mask
-            neg_input_ids = neg_input_ids.to(neg_input_ids.device)
-            neg_kwargs['attention_mask'] = neg_attention_mask
+        base_input_ids = base_input_ids.to(base_input_ids.device)
+        base_kwargs['attention_mask'] = base_attention_mask
+        pos_input_ids = pos_input_ids.to(pos_input_ids.device)
+        pos_kwargs['attention_mask'] = pos_attention_mask
+        neg_input_ids = neg_input_ids.to(neg_input_ids.device)
+        neg_kwargs['attention_mask'] = neg_attention_mask
 
         # keep track of which sequences are already finished
         unfinished_sequences = torch.ones(base_input_ids.shape[0], dtype=torch.long, device=base_input_ids.device)
@@ -172,13 +151,11 @@ class DExpertsLlama:
         all_base = []
         all_max_diff = []
         all_max_base = []
-        #cal = True
+        cal = True
+        cal_token = 0
+        all_token = 0
         for step in range(max_new_tokens):
             # prepare model inputs with past_key_values and attention_mask
-            # if step < 500:
-            #     cal = True
-            # else:
-            #     cal = False
             base_inputs = self.model.prepare_inputs_for_generation(base_input_ids, **base_kwargs)
             base_outputs = self.forward(
                 base_inputs, return_dict=True)
@@ -186,16 +163,19 @@ class DExpertsLlama:
             entropy = compute_entropy(base_next_token_logits)
             if entropy > self.threshold:
                 cal = True
+                cal_token += 1
+                all_token += 1
             else:
                 cal = False
+                all_token += 1
                 
             if cal:
                 pos_inputs = self.model.prepare_inputs_for_generation(pos_input_ids, **pos_kwargs)
                 neg_inputs = self.model.prepare_inputs_for_generation(neg_input_ids, **neg_kwargs)
 
             # DExperts
-                base_outputs, pos_outputs, neg_outputs = self.forward(
-                    base_inputs, pos_inputs, neg_inputs, return_dict=True
+                pos_outputs, neg_outputs = self.decode_forward(
+                    pos_inputs, neg_inputs, return_dict=True
                 )
                 base_next_token_logits = base_outputs.logits[..., -1, :]
                 pos_next_token_logits = pos_outputs.logits[..., -1, :]
@@ -219,17 +199,36 @@ class DExpertsLlama:
                 elif method == "pos_neg_softmax":
                     pos_next_token_logits = F.softmax(pos_next_token_logits, dim=-1)
                     neg_next_token_logits = F.softmax(neg_next_token_logits, dim=-1)
-                entropy_base = compute_entropy(base_next_token_logits).unsqueeze(1)
-                next_token_logits = (
-                    base_next_token_logits +
-                    entropy_base * (pos_next_token_logits - neg_next_token_logits)
-                )
+                entropy_base = compute_entropy(base_next_token_logits).unsqueeze(dim=1)
+                #entropy_base = torch.where(entropy_base < 0.1, torch.tensor(0.0).to(entropy_base.device), entropy_base)
+                if method == "1":
+                    #entropy_base = torch.where(entropy_base <= 0.5, torch.tensor(1).to(entropy_base.device), entropy_base)
+                    entropy_base = torch.where(entropy_base >= 0.5, torch.tensor(1).to(entropy_base.device), entropy_base)
+                elif method == "2":
+                    entropy_base = torch.where(entropy_base >= 0.5, torch.tensor(2).to(entropy_base.device), entropy_base)
+                elif method == "0":
+                    entropy_base = entropy_base
+                    
+                else:
+                    print("method must be '1' or '2' or 0")
+                if weight_method == "entropy":
+                    next_token_logits = (
+                        base_next_token_logits +
+                        entropy_base * (pos_next_token_logits - neg_next_token_logits)
+                    )
+                elif weight_method == "alpha":
+                    next_token_logits = (
+                        base_next_token_logits +
+                        self.alpha * (pos_next_token_logits - neg_next_token_logits)
+                    )
+                else:
+                    raise ValueError("weight_method must be 'entropy' or 'alpha'")
             else:
                 base_outputs = self.forward(
                     base_inputs, return_dict=True)
                 pos_outputs, neg_outputs = None, None
                 base_next_token_logits = base_outputs.logits[..., -1, :]
-                #entropy_base.append(compute_entropy(base_next_token_logits))
+                
                 # DExperts!
                 next_token_logits = (
                     base_next_token_logits
@@ -300,7 +299,7 @@ class DExpertsLlama:
                 if k.startswith('logits'):
                     analysis_data[k] = torch.cat(analysis_data[k], dim=1)
             return base_input_ids, analysis_data
-        
+        print("cal_token:", cal_token,"all_token:", all_token,"cal_token/all_token:", cal_token/all_token)
         return base_input_ids
 
     def _update_model_kwargs_for_generation(

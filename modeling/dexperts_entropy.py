@@ -150,6 +150,8 @@ class DExpertsLlama:
             else:
                 cal = False
             base_inputs = self.model.prepare_inputs_for_generation(base_input_ids, **base_kwargs)
+            
+            
             if cal:
                 pos_inputs = self.model.prepare_inputs_for_generation(pos_input_ids, **pos_kwargs)
                 neg_inputs = self.model.prepare_inputs_for_generation(neg_input_ids, **neg_kwargs)
@@ -182,11 +184,15 @@ class DExpertsLlama:
                 entropy_base = compute_entropy(base_next_token_logits).unsqueeze(dim=1)
                 #entropy_base = torch.where(entropy_base < 0.1, torch.tensor(0.0).to(entropy_base.device), entropy_base)
                 if method == "1":
-                    entropy_base = torch.where(entropy_base >= self.threshold, torch.tensor(1).to(entropy_base.device), entropy_base)
+                    #entropy_base = torch.where(entropy_base <= 0.5, torch.tensor(1).to(entropy_base.device), entropy_base)
+                    entropy_base = torch.where(entropy_base >= 0.5, torch.tensor(1).to(entropy_base.device), entropy_base)
                 elif method == "2":
                     entropy_base = torch.where(entropy_base >= self.threshold, torch.tensor(2).to(entropy_base.device), entropy_base)
+                elif method == "0":
+                    entropy_base = entropy_base
+                    
                 else:
-                    raise ValueError("method must be '1' or '2'")
+                    print("method must be '1' or '2' or 0")
                 if weight_method == "entropy":
                     next_token_logits = (
                         base_next_token_logits +
@@ -295,3 +301,5 @@ class DExpertsLlama:
             )
 
         return kwargs
+
+

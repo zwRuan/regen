@@ -11,7 +11,8 @@ from eval.utils import (
     load_lm_and_tokenizer,
     load_dexperts_model_and_tokenizer,
     ensure_dir,
-    dexperts_generate_completions
+    dexperts_generate_completions,
+    load_threshold_dexperts_model_and_tokenizer
 )
 from eval.diversity.self_belu_nltk import test_our_method
 import transformers 
@@ -158,7 +159,7 @@ def main(args):
     prefix_outputs = []
     ensure_dir(args.save_dir)
     if args.data_path:
-        alpaca_eval_data = pd.read_json(args.data_path).to_dict(orient="records")[:10]
+        alpaca_eval_data = pd.read_json(args.data_path).to_dict(orient="records")[:100]
     else:
         alpaca_eval_data = datasets.load_dataset("data/eval/alpaca_eval", "alpaca_eval")["eval"]
     for i in range(5):
@@ -174,6 +175,16 @@ def main(args):
         elif i == 1:
             if args.do_sample:
                 print(f"do_sample, 无需重新加载模型")
+            elif args.use_threshold:
+                logging.info("loading threshold dexperts...")
+                model, tokenizer = load_threshold_dexperts_model_and_tokenizer(
+                    model_name_or_path=args.model_name_or_path,
+                    alpha=args.alpha,
+                    threshold=args.threshold,
+                    chat_response_prefix="Answer:",
+                    load_in_8bit=args.load_in_8bit,
+                    use_fast_tokenizer=not args.use_slow_tokenizer,
+                )
             else:
                 logging.info("loading dexperts...")
                 model, tokenizer = load_dexperts_model_and_tokenizer(
@@ -410,6 +421,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--do_sample",
+        action="store_true",
+        help="If given, we will use the chat format for the prompts."
+    )
+    parser.add_argument(
+        "--use_threshold",
         action="store_true",
         help="If given, we will use the chat format for the prompts."
     )

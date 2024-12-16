@@ -33,5 +33,5 @@ bitsandbytes
 evaluate
 tokenizers
 protobuf
-transformers==4.40.0
+transformers==4.44.2
 nltk
