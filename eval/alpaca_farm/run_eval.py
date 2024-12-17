@@ -17,14 +17,14 @@ from eval.utils import (
 from eval.diversity.self_belu_nltk import test_our_method
 import transformers 
 
-# import debugpy
-# try:
-#     # 5678 is the default attach port in the VS Code debug configurations. Unless a host and port are specified, host defaults to 127.0.0.1
-#     debugpy.listen(("localhost", 16236))
-#     print("Waiting for debugger attach")
-#     debugpy.wait_for_client()
-# except Exception as e:
-#     pass
+import debugpy
+try:
+    # 5678 is the default attach port in the VS Code debug configurations. Unless a host and port are specified, host defaults to 127.0.0.1
+    debugpy.listen(("localhost", 16236))
+    print("Waiting for debugger attach")
+    debugpy.wait_for_client()
+except Exception as e:
+    pass
 
 
 pos_system_prompt = """
@@ -161,7 +161,7 @@ def main(args):
     if args.data_path:
         alpaca_eval_data = pd.read_json(args.data_path).to_dict(orient="records")[:100]
     else:
-        alpaca_eval_data = datasets.load_dataset("data/eval/alpaca_eval", "alpaca_eval")["eval"]
+        alpaca_eval_data = datasets.load_dataset("tatsu-lab/alpaca_eval", "alpaca_eval")["eval"]
     for i in range(5):
         if i == 0:
             logging.info("loading data and model...")
