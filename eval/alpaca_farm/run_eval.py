@@ -9,9 +9,11 @@ from eval.utils import (
     generate_completions,
     dynamic_import_function,
     load_lm_and_tokenizer,
+    load_2_dexperts_model_and_tokenizer,
     load_dexperts_model_and_tokenizer,
     ensure_dir,
     dexperts_generate_completions,
+    dexperts_2_generate_completions,
     load_threshold_dexperts_model_and_tokenizer
 )
 from eval.diversity.self_belu_nltk import test_our_method
@@ -156,15 +158,16 @@ Refined Answer (Similar and Aligned):
 
 def main(args):
     random.seed(42)
-    prefix_outputs = []
+    prefix_outputs_1 = []
+    prefix_outputs_2 = []
     ensure_dir(args.save_dir)
     if args.data_path:
-        alpaca_eval_data = pd.read_json(args.data_path).to_dict(orient="records")[:100]
+        alpaca_eval_data = pd.read_json(args.data_path).to_dict(orient="records")[:2]
     else:
         alpaca_eval_data = datasets.load_dataset("tatsu-lab/alpaca_eval", "alpaca_eval")["eval"]
     for i in range(5):
         if i == 0:
-            logging.info("loading data and model...")
+            print("loading data and model...")
             model, tokenizer = load_lm_and_tokenizer(
                 model_name_or_path=args.model_name_or_path,
                 tokenizer_name_or_path=args.tokenizer_name_or_path,
@@ -173,28 +176,25 @@ def main(args):
             )
         
         elif i == 1:
-            if args.do_sample:
-                print(f"do_sample, 无需重新加载模型")
-            elif args.use_threshold:
-                logging.info("loading threshold dexperts...")
-                model, tokenizer = load_threshold_dexperts_model_and_tokenizer(
-                    model_name_or_path=args.model_name_or_path,
-                    alpha=args.alpha,
-                    threshold=args.threshold,
-                    chat_response_prefix="Answer:",
-                    load_in_8bit=args.load_in_8bit,
-                    use_fast_tokenizer=not args.use_slow_tokenizer,
-                )
-            else:
-                logging.info("loading dexperts...")
-                model, tokenizer = load_dexperts_model_and_tokenizer(
-                    model_name_or_path=args.model_name_or_path,
-                    alpha=args.alpha,
-                    threshold=args.threshold,
-                    chat_response_prefix="Answer:",
-                    load_in_8bit=args.load_in_8bit,
-                    use_fast_tokenizer=not args.use_slow_tokenizer,
-                )
+            print("loading dexperts...")
+            model, tokenizer = load_dexperts_model_and_tokenizer(
+                model_name_or_path=args.model_name_or_path,
+                alpha=args.alpha,
+                threshold=args.threshold,
+                chat_response_prefix="Answer:",
+                load_in_8bit=args.load_in_8bit,
+                use_fast_tokenizer=not args.use_slow_tokenizer,
+            )
+        elif i == 3:
+            print("loading 2-dexperts...")
+            model, tokenizer = load_2_dexperts_model_and_tokenizer(
+                model_name_or_path=args.model_name_or_path,
+                alpha=args.alpha,
+                threshold=args.threshold,
+                chat_response_prefix="Answer:",
+                load_in_8bit=args.load_in_8bit,
+                use_fast_tokenizer=not args.use_slow_tokenizer,
+            )
         else:
             print(f"正在进行第{i}次迭代, 无需重新加载模型")
             print(f"模型: {model.__class__.__name__}")
@@ -204,21 +204,42 @@ def main(args):
         prompts = []
         pos_prompts = []
         neg_prompts = []
+        pos_1_prompts = []
+        neg_1_prompts = []
+        pos_2_prompts = []
+        neg_2_prompts = []
+        
         for num_example, example in enumerate(alpaca_eval_data):
             prompt = example["instruction"]
             prompt = get_templated_prompt(prompt, tokenizer)
-            if i != 0:
+            if i == 1 or i == 2:
                 # pos_prompts = []
                 # neg_prompts = []
-                for index in range(1):
-                    pos_promot = get_posprompt_ID(example["instruction"],prefix_outputs[num_example])
-                    neg_promot = get_negprompt_ID(example["instruction"],prefix_outputs[num_example])
-                    pos_prompt = get_templated_prompt(pos_promot, tokenizer)
-                    neg_prompt = get_templated_prompt(neg_promot, tokenizer)
+                pos_promot = get_posprompt_ID(example["instruction"],prefix_outputs_1[num_example])
+                neg_promot = get_negprompt_ID(example["instruction"],prefix_outputs_1[num_example])
+                pos_prompt = get_templated_prompt(pos_promot, tokenizer)
+                neg_prompt = get_templated_prompt(neg_promot, tokenizer)
+            if i == 3 or i == 4:
+                # pos_prompts = []
+                # neg_prompts = []
+                pos_1_promot = get_posprompt_ID(example["instruction"],prefix_outputs_1[num_example])
+                neg_1_promot = get_negprompt_ID(example["instruction"],prefix_outputs_1[num_example])
+                pos_1_prompt = get_templated_prompt(pos_1_promot, tokenizer)
+                neg_1_prompt = get_templated_prompt(neg_1_promot, tokenizer)
+
+                pos_2_promot = get_posprompt_ID(example["instruction"],prefix_outputs_2[num_example])
+                neg_2_promot = get_negprompt_ID(example["instruction"],prefix_outputs_2[num_example])
+                pos_2_prompt = get_templated_prompt(pos_2_promot, tokenizer)
+                neg_2_prompt = get_templated_prompt(neg_2_promot, tokenizer)
             prompts.append(prompt)
-            if i != 0:
+            if i == 1 or i == 2:
                 pos_prompts.append(pos_prompt)
                 neg_prompts.append(neg_prompt)
+            if i == 3 or i == 4:
+                pos_1_prompts.append(pos_1_prompt)
+                neg_1_prompts.append(neg_1_prompt)
+                pos_2_prompts.append(pos_2_prompt)
+                neg_2_prompts.append(neg_2_prompt)
 
         #prompts = prompts[:args.max_examples]
 
@@ -250,7 +271,7 @@ def main(args):
                     pad_token_id = tokenizer.eos_token_id,
                     do_sample=False,
                 )
-            else:
+            elif i == 1 or i == 2:
                 outputs = dexperts_generate_completions(
                     model=model,
                     tokenizer=tokenizer,
@@ -265,14 +286,38 @@ def main(args):
                     pad_token_id = tokenizer.eos_token_id,
                     do_sample=True,
                 )
+            elif i == 3 or i == 4:
+                outputs = dexperts_2_generate_completions(
+                    model=model,
+                    tokenizer=tokenizer,
+                    base_prompts=prompts,
+                    pos_1_prompts=pos_1_prompts,
+                    neg_1_prompts=neg_1_prompts,
+                    pos_2_prompts=pos_2_prompts,
+                    neg_2_prompts=neg_2_prompts,
+                    method=args.method,
+                    weight_method=args.weight_method,
+                    first_n_tokens=args.first_n_tokens,
+                    max_new_tokens=args.max_new_tokens,
+                    batch_size=args.eval_batch_size,
+                    pad_token_id = tokenizer.eos_token_id,
+                    do_sample=True,
+                )
 
         model_results = []
         model_name = os.path.basename(args.save_dir)
-        if len(prefix_outputs) ==  0:
-            prefix_outputs = [f"- **Previous Answer {i}:** " + outputs[index] + "\n" for index in range(len(outputs))]
-        else:
-            assert len(prefix_outputs) == len(outputs), "prefix_outputs and outputs must have the same length"
-            prefix_outputs = [prefix_outputs[index] + f"- **Previous Answer {i}:** " + outputs[index] + "\n" for index in range(len(outputs))]
+        if i == 0 or i == 1:
+            if len(prefix_outputs_1) ==  0:
+                prefix_outputs_1 = [f"- **Previous Answer {i}:** " + outputs[index] + "\n" for index in range(len(outputs))]
+            else:
+                #assert len(prefix_outputs_1) == len(outputs), "prefix_outputs and outputs must have the same length"
+                prefix_outputs_1 = [prefix_outputs_1[index] + f"- **Previous Answer {i}:** " + outputs[index] + "\n" for index in range(len(outputs))]
+        if i == 2 or i == 3:
+            if len(prefix_outputs_2) ==  0:
+                prefix_outputs_2 = [f"- **Previous Answer {i}:** " + outputs[index] + "\n" for index in range(len(outputs))]
+            else:
+                #assert len(prefix_outputs_1) == len(outputs), "prefix_outputs and outputs must have the same length"
+                prefix_outputs_2 = [prefix_outputs_2[index] + f"- **Previous Answer {i}:** " + outputs[index] + "\n" for index in range(len(outputs))]
         with open(os.path.join(args.save_dir, f"predictions_{i}.jsonl"), "w") as fout:
             for example, output in zip(alpaca_eval_data, outputs):
                 example["output"] = output.strip()

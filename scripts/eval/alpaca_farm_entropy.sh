@@ -1,14 +1,14 @@
-#export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=0
 #METHOD=entropy-juedge
 
 
 source activate generation
 python -m eval.alpaca_farm.run_eval \
     --model_name_or_path meta-llama/Meta-Llama-3-8B-Instruct \
+    --data_path /workspace/CODE/regen/alpaca_eval/alpaca_eval.json \
     --save_dir results/test \
-    --eval_batch_size 1 \
+    --eval_batch_size 2 \
     --method 1 \
-    --use_threshold \
     --weight_method entropy
 # for THRESHOLD in 0.001 0.01 0.05 0.1 0.15 0.2 
 # do
